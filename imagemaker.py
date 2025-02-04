@@ -35,7 +35,7 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
 
     # Position text from the bottom upwards
     y_position = 840  # Start from the bottom
-    for line in reversed(text_lines):  # Draw from bottom to top
+    for line in text_lines:  # Draw from bottom to top
         text_width, text_height = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
 
         # Ensure text fits within image width (wrap text if too long)
@@ -73,6 +73,6 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
     cv2.destroyAllWindows()
 
 # Example Usage
-background = typeless_loader("background")
-overlay_images(background, "foreground.png", "output.png", "is it??? ")
+# background = typeless_loader("background")
+# overlay_images(background, "foreground.png", "output.png", "is it??? ")
 
