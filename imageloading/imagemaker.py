@@ -1,13 +1,16 @@
 import cv2
 import numpy as np
-from image_typeless_loader import typeless_loader
-from resize_and_crop import resize_and_crop
+from imageloading.resize_and_crop import resize_and_crop
 
 
 def overlay_images(background_path, foreground_path, output_path, text, font_scale=2.5, thickness=2):
     # Load images
     background = cv2.imread(background_path)
     foreground = cv2.imread(foreground_path, cv2.IMREAD_UNCHANGED)  # Keep alpha
+    if background is None:
+        print("input image hasn't loaded")
+    if foreground is None:
+        print("frame image didn't load")
 
     h, w = foreground.shape[:2]
 
@@ -68,9 +71,6 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
 
     # Save and display the output image
     cv2.imwrite(output_path, background)
-    cv2.imshow("Result", background)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
 
 # Example Usage
 # background = typeless_loader("background")
