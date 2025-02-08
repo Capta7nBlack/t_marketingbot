@@ -11,6 +11,7 @@ from config import frame_absolute_path
 from config import output_absolute_folder
 from telebot import types
 
+from config import under_post_text_switch
 
 from config import bot_token
 bot = TeleBot(bot_token)
@@ -62,9 +63,43 @@ def photo_text_handler(m, path):
         bot.register_next_step_handler(msg, lambda m: photo_text_handler(m, path = save_path))
         return
     output_path_file = output_absolute_folder + f"/{m.from_user.first_name}_{m.text}_edited.png"
-    print(absolute_path("imageloading/frame.png"))
     overlay_images(absolute_input_path, frame_absolute_path, output_path_file, m.text) 
+    
+    if under_post_text_switch:
+        bot.send_message(m.chat.id,
+                    f"Отправьте текст который будет под постом."
+                     )
+        bot.register_next_step_handler(m, lambda m: post_text_handler(m, photo_path = output_path_file))
+    else:
+        with open(output_path_file, "rb") as photo:
+            bot.send_photo(m.chat.id, photo)
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        Proceed = types.KeyboardButton('Продолжить')
+        Cancel = types.KeyboardButton('Начать создание поста сначало')
+        markup.row(Proceed,Cancel)
+        bot.send_message(m.chat.id,
+                     f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначалo.",
+                         reply_markup = markup
+                     )
+        bot.register_next_step_handler(m,lambda m: verification_handler(m, photo_path = output_path_file, post_text = None))
 
+def post_text_handler(m, photo_path):
+    with open(photo_path, "rb") as photo:
+        bot.send_photo(m.chat.id, photo, caption = m.text)
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    Proceed = types.KeyboardButton('Продолжить')
+    Cancel = types.KeyboardButton('Начать создание поста сначало')
+    markup.row(Proceed,Cancel)
+
+    bot.send_message(m.chat.id,
+                     f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначал.",
+                     reply_markup = markup
+                     )
+    bot.register_next_step_handler(m, lambda m: verification_handler(m, photo_path = photo_path, post_text = m.text))
+
+def verification_handler(m, photo_path, post_text):
+    # Здесь должен сохранить фото и текст под пост в дазу банных
+    pass
 
 
 bot.polling()
