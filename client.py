@@ -1,8 +1,11 @@
 from telebot import TeleBot
 
+import re
+
 from datetime import date
 from dateutil.relativedelta import relativedelta
-# from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
+from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
+
 
 from get_absolute_path import absolute_path
 from imageloading.imagemaker import overlay_images
@@ -38,7 +41,7 @@ def photo_handler(m, data):
     if m.content_type != 'photo':
         # Inform the user that a photo is required and re-register the handler
         msg = bot.send_message(m.chat.id, "Пожалуйста отправьте Фото.")
-        bot.register_next_step_handler(msg, photo_handler)
+        bot.register_next_step_handler(msg, photo_handler, data)
         return
 
     file_id = m.photo[-1].file_id
@@ -64,7 +67,15 @@ def photo_text_handler(m, data):
 
         bot.register_next_step_handler(msg, photo_text_handler, data)
         return
-    output_path_file = output_absolute_folder + f"/{m.from_user.first_name}_{m.text}_edited.png"
+    if "\\" in m.text:
+        msg = bot.send_message(m.chat.id, "Пожалуйста не используйте '\\'")
+
+        bot.register_next_step_handler(msg, photo_text_handler, data)
+        return
+
+    safe_text = re.sub(r'[\/:*?"<>|]', '', m.text)
+    safe_first_name =  re.sub(r'[\/:*?"<>|]', '', m.from_user.first_name)
+    output_path_file = output_absolute_folder + f"/{safe_first_name}_{safe_text}_edited.png"
     overlay_images(absolute_input_path, frame_absolute_path, output_path_file, m.text) 
     
     if under_post_text_switch:
@@ -74,13 +85,16 @@ def photo_text_handler(m, data):
         data['output_photo_path'] = output_path_file
         bot.register_next_step_handler(m, post_text_handler, data)
     else:
+
         with open(output_path_file, "rb") as photo:
+
             bot.send_photo(m.chat.id, photo)
         
         bot.send_message(m.chat.id,
                      f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначалo.",
                          reply_markup = markup_verification()
                      )
+        data['output_photo_path'] = output_path_file
         data['post_text'] = None
         bot.register_next_step_handler(m,verification_handler, data)
 
@@ -97,8 +111,29 @@ def post_text_handler(m, data):
     bot.register_next_step_handler(m, verification_handler, data)
 
 def verification_handler(m, data):
-    # Здесь должен сохранить фото и текст под пост в дазу банных
-    pass
-    
+    if m.text == "Продолжить":
+        calendar, step = DetailedTelegramCalendar(locale="ru", min_date = date.today(), max_date = date.today() + relativedelta(months=1)).build()
+        bot.send_message(m.chat.id,
+                     f"Выберите дату выпуска поста.",
+                     reply_markup=calendar)
+    elif m.text == "Начать создание поста сначало":
+        bot.send_message(m.chat.id,
+                     f"Отправьте фото для поста.",
+                         reply_markup = markup_default())
+        data = {}
+        bot.register_next_step_handler(m, photo_handler, data)
+
+@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+def calendar_proceed(c):
+    result, key, step = DetailedTelegramCalendar(locale="ru", min_date = date.today(), max_date = date.today() + relativedelta(months=1)).process(c.data)
+    if not result and key:
+        bot.edit_message_text(f"Выберите дату публикации",
+                              c.message.chat.id,
+                              c.message.message_id,
+                              reply_markup=key)
+    elif result:
+        bot.edit_message_text(f"Вы хотите опубликовать пост {result}",
+                              c.message.chat.id,
+                              c.message.message_id)
 
 bot.polling()
