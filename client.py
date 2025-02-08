@@ -13,19 +13,18 @@ from telebot import types
 
 from config import under_post_text_switch
 
+from markups import markup_default, markup_verification
+
 from config import bot_token
 bot = TeleBot(bot_token)
+
 
 #min_date = date.today()), max_date = datetime.now() + relativedelta(months=1)
 @bot.message_handler(commands=['start'])
 def start(m):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    Create = types.KeyboardButton('Создать рекламный пост')
-    Showall = types.KeyboardButton('Показать все созданные посты')
-    markup.row(Create, Showall)
-    bot.send_message(m.chat.id,
+        bot.send_message(m.chat.id,
                      f"Здравствуйте { m.from_user.first_name}, вас приветствует бот по приему рекламных заявок в инстаграм. Нажмите кнопку создать рекламный пост, если хотите.",
-                     reply_markup = markup) 
+                     reply_markup = markup_default()) 
 
 
 @bot.message_handler(func=lambda message: message.text == 'Создать рекламный пост')
@@ -73,27 +72,20 @@ def photo_text_handler(m, path):
     else:
         with open(output_path_file, "rb") as photo:
             bot.send_photo(m.chat.id, photo)
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        Proceed = types.KeyboardButton('Продолжить')
-        Cancel = types.KeyboardButton('Начать создание поста сначало')
-        markup.row(Proceed,Cancel)
+        
         bot.send_message(m.chat.id,
                      f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначалo.",
-                         reply_markup = markup
+                         reply_markup = markup_verification()
                      )
         bot.register_next_step_handler(m,lambda m: verification_handler(m, photo_path = output_path_file, post_text = None))
 
 def post_text_handler(m, photo_path):
     with open(photo_path, "rb") as photo:
         bot.send_photo(m.chat.id, photo, caption = m.text)
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    Proceed = types.KeyboardButton('Продолжить')
-    Cancel = types.KeyboardButton('Начать создание поста сначало')
-    markup.row(Proceed,Cancel)
 
     bot.send_message(m.chat.id,
                      f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначал.",
-                     reply_markup = markup
+                     reply_markup = markup_verification()
                      )
     bot.register_next_step_handler(m, lambda m: verification_handler(m, photo_path = photo_path, post_text = m.text))
 
