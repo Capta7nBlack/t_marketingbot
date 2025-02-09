@@ -11,6 +11,6 @@ def markup_default():
 def markup_verification():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     Proceed = types.KeyboardButton('Продолжить')
-    Cancel = types.KeyboardButton('Начать создание поста сначало')
+    Cancel = types.KeyboardButton('Остановить диалог')
     markup.row(Proceed,Cancel)
     return markup

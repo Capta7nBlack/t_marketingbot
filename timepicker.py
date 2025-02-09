@@ -4,11 +4,10 @@ from config import bot_token
 API_TOKEN = bot_token
 bot = telebot.TeleBot(API_TOKEN)
 
-user_data = {}  # For storing user-selected hours temporarily
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-def build_hour_keyboard_clock_style() -> InlineKeyboardMarkup:
+def build_hour_keyboard_clock() -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
     
     # This 2D list represents the 'shape' of the clock
@@ -42,24 +41,13 @@ def build_hour_keyboard_clock_style() -> InlineKeyboardMarkup:
     return markup
 
 
-@bot.message_handler(commands=['picktime'])
-def pick_time(message):
-    hour_keyboard = build_hour_keyboard_clock_style()
-    bot.send_message(
-        chat_id=message.chat.id,
-        text="Choose the hour:",
-        reply_markup=hour_keyboard
-    )
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith('hour_') or call.data == ("none"))
 def callback_inline(call):
     data = call.data
     
     if data.startswith("hour_"):
         chosen_hour = data.split("_")[1]
-        user_data[call.from_user.id] = {"hour": chosen_hour}
         
-        minute_keyboard = build_minute_keyboard()
         bot.edit_message_text(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
@@ -67,7 +55,4 @@ def callback_inline(call):
         )
         bot.answer_callback_query(call.id)
 
-
-
-bot.infinity_polling()
 
