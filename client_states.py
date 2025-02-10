@@ -156,27 +156,43 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
         elif step == "selecting_date":
             await state.set_state(PostStates.selecting_time)
             await call.message.edit_text("Теперь выберите время публикации.", reply_markup=build_hour_keyboard_clock())
+
+
         elif step == "selecting_time":
             await state.set_state(PostStates.final_verification)
             data = await state.get_data()
             if under_post_text_switch:
-                post_text = f"{data['post_text']}\nДата: {data['post_date']}\nВремя: {data['post_time']}"
+                text = data.get('post_text')
+                date = data.get('post_date')
+                time = data.get('post_time')
+                post_text = f"{text}\nДата: {date}\nВремя: {time}"
             else:
                 post_text = f"Дата: {data['post_date']}\nВремя: {data['post_time']}"
 
-            with open(data['output_photo_path'], 'rb') as photo:
-                await call.message.answer_photo(photo, caption=post_text)
+            output_photo = FSInputFile(data['output_photo_path'])
+
+            await call.message.answer_photo(output_photo, caption=post_text)
 
             await call.message.answer("Продолжим или если что-то хотите поменять начните заново", reply_markup=inline_verification("final_verification"))
+
+
+
+        elif step == "final_verification":
+            pass
+
 
     elif call.data.startswith("retry_"):
         if step == "photo_text":
             await state.set_state(PostStates.uploading_photo)
             await call.message.answer("Пожалуйста отправьте фото заново", reply_markup=markup_cancelation())
+
+
         elif step == "post_text":
             await call.answer()
             await state.set_state(PostStates.post_text)
             await call.message.answer("Пожалуйста отправьте новый текст", reply_markup=markup_cancelation())
+
+
         elif step == "selecting_date":
 
             await state.set_state(PostStates.selecting_date)
@@ -193,9 +209,16 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
                            )
             await call.answer()
 
+
+
         elif step == "selecting_time":
             await state.set_state(PostStates.selecting_time)
-            await call.message.edit_text("Выберите время публикации.", reply_markup=build_hour_keyboard_clock())
+            await call.message.edit_text("Выберите новое время публикации.", reply_markup=build_hour_keyboard_clock())
+
+
+        elif step == "final_verification":
+            await state.set_state(PostStates.uploading_photo)
+            await call.message.answer("Отправьте, пожалуйста, новое фото для поста.", reply_markup=markup_cancelation())
 
     await call.answer()
 
@@ -212,22 +235,25 @@ async def selecting_date(callback_query: types.CallbackQuery,callback_data: Call
     calendar.set_dates_range(today, next_month)
     selected, date = await calendar.process_selection(callback_query, callback_data)
     if selected:
+        await state.update_data(post_date=date.strftime("%d/%m/%Y"))
+        print("Checking the save of date: {date_test}")
         await callback_query.message.answer(
 
             f'You selected {date.strftime("%d/%m/%Y")}\nВы можете поменять дату если ошиблись.',
             reply_markup = inline_verification("selecting_date")
         )
-        state.update_data(selecting_date =  date.strftime("%d/%m/%Y"))
-# Handle time selection callback
+        # Handle time selection callback
 @dp.callback_query(F.data.startswith("hour_") | (F.data == "none"), StateFilter(PostStates.selecting_time))
 async def callback_inline(call: types.CallbackQuery, state: FSMContext):
     data = call.data
 
     if data.startswith("hour_"):
         chosen_hour = data.split("_")[1]
-        await state.update_data(selected_time = chosen_hour)
+        await state.update_data(post_time = chosen_hour)
         # ✅ Edit message text to show the selected hour
-        await call.message.edit_text(f"Hour chosen: {chosen_hour}")
+        await call.message.edit_text(f"Выбранное время: {chosen_hour}. Если вы можете поменять время если ошиблись.",
+                                     reply_markup = inline_verification("selecting_time")
+                                     )
 
     await call.answer()  # ✅ Always close the callback query to avoid "loading" state
 
