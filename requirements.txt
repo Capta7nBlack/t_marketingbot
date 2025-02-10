@@ -1,4 +1,5 @@
-telebot==0.0.5
+aiogram
+aiogram_calendar
 opencv-python==4.11.0.86
 numpy==2.2.2
 python-dateutil
