@@ -12,6 +12,7 @@ from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import text
 
+from hash import hashed
 
 from timepicker import build_hour_keyboard_clock
 
@@ -19,7 +20,8 @@ from imageloading.imagemaker import overlay_images
 from get_absolute_path import absolute_path
 from markup_states import markup_default, inline_verification, markup_cancelation
 
-from config import frame_absolute_path, output_absolute_folder, bot_token, under_post_text_switch
+from config import frame_absolute_path, output_absolute_folder, bot_token, under_post_text_switch, receipts_folder_path
+from config import input_absolute_folder
 
 from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, DialogCalendar, DialogCalendarCallback, get_user_locale
 from aiogram.filters.callback_data import CallbackData
@@ -62,13 +64,13 @@ async def default_showall(message: types.Message):
     await message.answer("This part of the bot is work in progress")
 
 # Handle photo upload
-@dp.message(PostStates.uploading_photo, F.photo)
+@dp.message(StateFilter(PostStates.uploading_photo), F.photo)
 async def handle_photo(message: types.Message, state: FSMContext):
     file_id = message.photo[-1].file_id
     file_info = await bot.get_file(file_id)
     downloaded_file = await bot.download_file(file_info.file_path)
     downloaded_file = downloaded_file.read()
-    save_input_path = f"imageloading/user_input_photos/{message.from_user.first_name}_input.jpg"
+    save_input_path = f"{input_absolute_folder}{message.from_user.first_name}_input.jpg"
     with open(save_input_path, "wb") as new_file:
         new_file.write(downloaded_file)
 
@@ -76,15 +78,35 @@ async def handle_photo(message: types.Message, state: FSMContext):
     await state.update_data(input_photo_path=absolute_path(save_input_path))
     await state.set_state(PostStates.photo_text)
 
+
+@dp.message(StateFilter(PostStates.uploading_photo), F.document, F.document.mime_type.startswith("image/"))
+async def handle_photo(message: types.Message, state: FSMContext):
+    file_id = message.document.file_id  # Get file ID
+    file_info = await bot.get_file(file_id)  # Get file info
+    file_path = file_info.file_path  # Telegram's file path
+
+    # 📥 Download the file
+    image_data = await bot.download_file(file_path)
+
+    save_input_path = f"{input_absolute_folder}{message.from_user.first_name}_input.jpg"
+    with open(save_input_path, "wb") as new_file:
+        new_file.write(image_data.read())
+
+    await message.answer("Фото принято как файл. Теперь отправьте текст для фото.")
+    await state.update_data(input_photo_path=absolute_path(save_input_path))
+    await state.set_state(PostStates.photo_text)
+
+
 # Handle invalid photo input
-@dp.message(PostStates.uploading_photo)
+@dp.message(StateFilter(PostStates.uploading_photo))
 async def invalid_photo(message: types.Message):
     await message.answer("❌ Отправьте фото, а не текст.", reply_markup=markup_cancelation())
 
+
 # Handle photo text
-@dp.message(PostStates.photo_text, F.text)
+@dp.message(StateFilter(PostStates.photo_text), F.text)
 async def photo_text(message: types.Message, state: FSMContext):
-    safe_text = re.sub(r'[\/:*?"<>|]', '', message.text)
+    safe_text = hashed( message.text)
     safe_first_name = re.sub(r'[\/:*?"<>|]', '', message.from_user.first_name)
 
     data = await state.get_data()
@@ -101,16 +123,39 @@ async def photo_text(message: types.Message, state: FSMContext):
     await message.answer("Хотите продолжить или попробовать еще раз?", reply_markup=inline_verification("photo_text"))
 
 
-@dp.message(PostStates.photo_text)
+@dp.message(StateFilter(PostStates.photo_text))
 async def invalid_text(message: types.Message, state: FSMContext):
     await message.answer("Вы должны отправить Текст")
 
 # Handle post text
-@dp.message(PostStates.post_text)
+@dp.message(StateFilter(PostStates.post_text))
 async def post_text(message: types.Message, state: FSMContext):
     await state.update_data(post_text=message.text)
     
     await message.answer(f'Текст для поста: "{message.text}"\nПродолжим или хотите поменять текст на другой?', reply_markup=inline_verification("post_text"))
+
+
+@dp.message(F.document, F.document.mime_type == "application/pdf", StateFilter(PostStates.payment))
+async def payment_handle_pdf(message: types.Message, state: FSMContext):
+    await message.answer("✅ Ваш чек был принят. Если вы ошиблись, можете поменять файл перед тем как он будет сохранен и отправлен на обработку менеджера.",
+                         reply_markup = inline_verification("payment"))    
+    await state.update_data(receipt_id = message.document.file_id)
+
+
+@dp.message(F.photo, StateFilter(PostStates.payment))
+async def payment_invalid_photo(message: types.Message, state: FSMContext):
+    await message.answer("Пожалуйста отправьте чек в виду PDF файла. Фото чека не подойдет",
+                         reply_markup = markup_cancelation()
+                         )
+
+
+@dp.message(StateFilter(PostStates.payment))
+async def payment_invalid_rest(message: types.Message, state: FSMContext):
+    await message.answer("Пожалуйста отправьте чек в виду PDF файла.", 
+                         reply_markup = markup_cancelation()
+                         )
+
+
 
 # Handle verification callbacks
 @dp.callback_query(F.data.startswith(("confirm_", "retry_")))
@@ -181,7 +226,25 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             await call.message.answer("Оплатите 5 000тг через Kaspi номер: +7 705 406 60 26. После оплаты отправьте .pdf ек.", reply_markup = markup_cancelation()
                                       )
             await state.set_state(PostStates.payment)
+        
 
+        elif step == "payment":
+            await call.message.answer("Поздравляю, вы зарегистрировали новый пост для рекламы. В скором времени менеджер обработает вашу заявку!.",
+                                      reply_markup = markup_default())
+            
+            data = await state.get_data()
+            receipt_id = data.get("receipt_id")
+            file_info = await bot.get_file(receipt_id)
+            file_path = file_info.file_path
+
+            pdf_data = await bot.download_file(file_path)
+            save_path = f"{receipts_folder_path}{call.message.from_user.first_name}_{receipt_id}.pdf"
+            with open(save_path, 'wb') as f:
+                f.write(pdf_data.read())
+
+            # Здесь должен быть код по сохранению данных в дб
+
+            await state.clear()
 
     elif call.data.startswith("retry_"):
         if step == "photo_text":
@@ -221,6 +284,11 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
         elif step == "final_verification":
             await state.set_state(PostStates.uploading_photo)
             await call.message.answer("Отправьте, пожалуйста, новое фото для поста.", reply_markup=markup_cancelation())
+        
+        elif step == "payment":
+            await state.set_state(PostStates.payment)
+            await call.message.answer("Отправьте пожалуйста новый чек.")
+
 
     await call.answer()
 
