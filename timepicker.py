@@ -1,15 +1,16 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import bot_token
-API_TOKEN = bot_token
-bot = telebot.TeleBot(API_TOKEN)
 
 
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram import F
+from aiogram.filters import StateFilter
 
+# ✅ Function to Build Hour Keyboard in a Clock Layout
 def build_hour_keyboard_clock() -> InlineKeyboardMarkup:
-    markup = InlineKeyboardMarkup()
-    
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+
     # This 2D list represents the 'shape' of the clock
     clock_layout = [
         [0,  0,  0, 12, 0,  0,  0],
@@ -25,34 +26,29 @@ def build_hour_keyboard_clock() -> InlineKeyboardMarkup:
         buttons = []
         for cell in row:
             if cell == 0:
-                # Blank button to keep the shape
-                buttons.append(InlineKeyboardButton(" ", callback_data="none"))
+                # Blank button to maintain layout (callback_data="none" to avoid errors)
+                buttons.append(InlineKeyboardButton(text = " ", callback_data="none"))
             else:
-                # Hour button
-                string_cell = str(cell)
-                string_cell += ":00"
-                buttons.append(InlineKeyboardButton(
-                    string_cell,
-                    callback_data=f"hour_{string_cell}"
-                ))
-        # Add this row of 7 buttons to the markup
-        markup.row(*buttons)
-    
+                # Hour button with formatted text
+                hour_text = f"{cell}:00"
+                buttons.append(InlineKeyboardButton(text = hour_text, callback_data=f"hour_{hour_text}"))
+        
+        # Add row to inline keyboard
+        markup.inline_keyboard.append(buttons)
+
     return markup
 
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('hour_') or call.data == ("none"))
-def callback_inline(call):
+# ✅ Handling the Button Clicks in aiogram v3
+# @dp.callback_query(F.data.startswith("hour_") | (F.data == "none"))
+async def callback_inline(call: CallbackQuery):
     data = call.data
-    
+
     if data.startswith("hour_"):
         chosen_hour = data.split("_")[1]
-        
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=f"Hour chosen: {chosen_hour}"
-        )
-        bot.answer_callback_query(call.id)
 
+        # ✅ Edit message text to show the selected hour
+        await call.message.edit_text(f"Hour chosen: {chosen_hour}")
+
+    await call.answer()  # ✅ Always close the callback query to avoid "loading" state
 

@@ -82,7 +82,7 @@ async def invalid_photo(message: types.Message):
     await message.answer("❌ Отправьте фото, а не текст.", reply_markup=markup_cancelation())
 
 # Handle photo text
-@dp.message(PostStates.photo_text)
+@dp.message(PostStates.photo_text, F.text)
 async def photo_text(message: types.Message, state: FSMContext):
     safe_text = re.sub(r'[\/:*?"<>|]', '', message.text)
     safe_first_name = re.sub(r'[\/:*?"<>|]', '', message.from_user.first_name)
@@ -100,11 +100,17 @@ async def photo_text(message: types.Message, state: FSMContext):
     await message.answer_photo(output_photo)
     await message.answer("Хотите продолжить или попробовать еще раз?", reply_markup=inline_verification("photo_text"))
 
+
+@dp.message(PostStates.photo_text)
+async def invalid_text(message: types.Message, state: FSMContext):
+    await message.answer("Вы должны отправить Текст")
+
 # Handle post text
 @dp.message(PostStates.post_text)
 async def post_text(message: types.Message, state: FSMContext):
     await state.update_data(post_text=message.text)
-    await message.answer("Продолжим или хотите поменять текст на другой?", reply_markup=inline_verification("post_text"))
+    
+    await message.answer(f'Текст для поста: "{message.text}"\nПродолжим или хотите поменять текст на другой?', reply_markup=inline_verification("post_text"))
 
 # Handle verification callbacks
 @dp.callback_query(F.data.startswith(("confirm_", "retry_")))
@@ -126,13 +132,26 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
                 locale='ru-RU', show_alerts=True
                 )
                 calendar.set_dates_range(today, next_month)
-                await call.message.answer(
+                await call.message.edit_text(
                         f"Выберите дату публикации.",
                            reply_markup=await calendar.start_calendar()
                            )
+                await call.answer()
         elif step == "post_text":
-            await call.message.answer("Выберите дату публикации.", reply_markup=await SimpleCalendar(locale= await get_user_locale(call.message.from_user)).start_calendar())
             await state.set_state(PostStates.selecting_date)
+            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+            next_month = datetime.today() + relativedelta(months=1)
+
+            calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+            calendar.set_dates_range(today, next_month)
+            await call.message.edit_text(
+                        f"Выберите дату публикации.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+            await call.answer()
+
 
         elif step == "selecting_date":
             await state.set_state(PostStates.selecting_time)
@@ -155,11 +174,25 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             await state.set_state(PostStates.uploading_photo)
             await call.message.answer("Пожалуйста отправьте фото заново", reply_markup=markup_cancelation())
         elif step == "post_text":
+            await call.answer()
             await state.set_state(PostStates.post_text)
-            await call.message.edit_text("Пожалуйста отправьте новый текст", reply_markup=inline_verification("post_text"))
+            await call.message.answer("Пожалуйста отправьте новый текст", reply_markup=markup_cancelation())
         elif step == "selecting_date":
+
             await state.set_state(PostStates.selecting_date)
-            await call.message.edit_text("Выберите дату публикации.", reply_markup=DetailedTelegramCalendar(locale="ru", min_date=date.today(), max_date=date.today() + relativedelta(months=1)).build())
+            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+            next_month = datetime.today() + relativedelta(months=1)
+
+            calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+            calendar.set_dates_range(today, next_month)
+            await call.message.edit_text(
+                        f"Выберите дату публикации.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+            await call.answer()
+
         elif step == "selecting_time":
             await state.set_state(PostStates.selecting_time)
             await call.message.edit_text("Выберите время публикации.", reply_markup=build_hour_keyboard_clock())
@@ -167,25 +200,36 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 # Handle calendar callback
-@dp.callback_query(SimpleCalendarCallback.filter(), PostStates.selecting_date)
+@dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(PostStates.selecting_date))
 async def selecting_date(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
 
     calendar = SimpleCalendar(
-        locale=await get_user_locale(callback_query.from_user), show_alerts=True
+        locale="ru-RU", show_alerts=True
     )
-    calendar.set_dates_range(datetime(2025,2,10), datetime(2025,3 , 10))
+    today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    next_month = datetime.today() + relativedelta(months=1)
+
+    calendar.set_dates_range(today, next_month)
     selected, date = await calendar.process_selection(callback_query, callback_data)
     if selected:
         await callback_query.message.answer(
-            f'You selected {date.strftime("%d/%m/%Y")}',
-            reply_markup = None
+
+            f'You selected {date.strftime("%d/%m/%Y")}\nВы можете поменять дату если ошиблись.',
+            reply_markup = inline_verification("selecting_date")
         )
+        state.update_data(selecting_date =  date.strftime("%d/%m/%Y"))
 # Handle time selection callback
-@dp.callback_query(F.data.startswith('hour_'), PostStates.selecting_time)
-async def selecting_time(call: types.CallbackQuery, state: FSMContext):
-    chosen_hour = call.data.split("_")[1]
-    await state.update_data(post_time=chosen_hour)
-    await call.message.edit_text(f"Вы выбрали {chosen_hour}. Продолжим или хотите выбрать время выпуска заново?", reply_markup=inline_verification("selecting_time"))
+@dp.callback_query(F.data.startswith("hour_") | (F.data == "none"), StateFilter(PostStates.selecting_time))
+async def callback_inline(call: types.CallbackQuery, state: FSMContext):
+    data = call.data
+
+    if data.startswith("hour_"):
+        chosen_hour = data.split("_")[1]
+        await state.update_data(selected_time = chosen_hour)
+        # ✅ Edit message text to show the selected hour
+        await call.message.edit_text(f"Hour chosen: {chosen_hour}")
+
+    await call.answer()  # ✅ Always close the callback query to avoid "loading" state
 
 # Start polling
 if __name__ == '__main__':
