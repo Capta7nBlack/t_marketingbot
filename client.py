@@ -1,296 +1,334 @@
-from telebot import TeleBot
-
-import db
-
 import re
 
-from datetime import date
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
 
-from timepicker import build_hour_keyboard_clock
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.markdown import text
 
-from get_absolute_path import absolute_path
-from imageloading.imagemaker import overlay_images
-from imageloading.image_typeless_loader import typeless_loader
-from config import frame_absolute_path
-from config import output_absolute_folder
-from telebot import types
+from additional.hash import hashed
 
-from config import under_post_text_switch
+from additional.timepicker import build_hour_keyboard_clock
 
-from markups import markup_default, markup_verification
+from imageloading.imagemaker_cv2 import overlay_images
+from additional.get_absolute_path import absolute_path
+from additional.markup_states import markup_default, inline_verification, markup_cancelation
 
-from config import bot_token
-bot = TeleBot(bot_token)
+from config import frame_absolute_path, output_absolute_folder, bot_token, under_post_text_switch, receipts_folder_path
+from config import input_absolute_folder
 
-try:
-    db.create()
-except Exception as e:
-    print(e)
+from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, DialogCalendar, DialogCalendarCallback, get_user_locale
+from aiogram.filters.callback_data import CallbackData
 
-@bot.message_handler(commands=['start'])
-def start(m):
-        bot.send_message(m.chat.id,
-                     f"Здравствуйте { m.from_user.first_name}, вас приветствует бот по приему рекламных заявок в инстаграм. Нажмите кнопку создать рекламный пост, если хотите купить рекламу. Чтобы выйти из диалогового окна, нажмите 'Остановить диалог'",
-                     reply_markup = markup_default()) 
+# Initialize bot and dispatcher
+bot = Bot(token=bot_token)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
+# Define states
+class PostStates(StatesGroup):
+    uploading_photo = State()
+    photo_text = State()
+    post_text = State()
+    selecting_date = State()
+    selecting_time = State()
+    final_verification = State()
+    payment = State()
 
-@bot.message_handler(func=lambda message: message.text == 'Показать все созданные посты')
-def show_posts(m):
-    bot.send_message(m.chat.id,
-                     f"wanna show you all")
+# Cancel conversation handler
+@dp.message(F.text == "❌ Остановить диалог")
+async def cancel_conversation(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Диалог прекращен. Вы можете начать заново", reply_markup=markup_default())
 
-@bot.message_handler(func=lambda message: message.text == 'Создать рекламный пост')
-def create_post(m):
-    try:
-        db.temporary_delete(m.chat.id)
-    except Exception as e:
-        print(e)
-    data = {}
-    bot.send_message(m.chat.id,
-                     f"Отправьте фото для поста.",
-                     reply_markup = markup_verification())
-    bot.register_next_step_handler(m, photo_handler, data)
+# Start command handler
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    await message.answer(f"Здравствуйте {message.from_user.first_name}, добро пожаловать!", reply_markup=markup_default())
 
-def photo_handler(m, data):
-    if m.content_type != 'photo':
-        if m.text == "Остановить диалог":
-            bot.send_message(m.chat.id, 
-                             f"Диалог прекращен",
-                             reply_markup = markup_default())
-            try:
-                db.temporary_delete(m.chat.id)
-            except Exception as e:
-                print(e)
+# Create post handler
+@dp.message(F.text == "Создать рекламный пост")
+async def default_create(message: types.Message, state: FSMContext):
+    await state.set_state(PostStates.uploading_photo)
+    await message.answer("Отправьте, пожалуйста, фото для поста.", reply_markup=markup_cancelation())
 
-            return
-        # Inform the user that a photo is required and re-register the handler
-        msg = bot.send_message(m.chat.id, "Вы отправили не фото. Пожалуйста отправьте Фото", reply_markup = markup_verification())
-        bot.register_next_step_handler(m, photo_handler, data)
-        return
+# Show all posts handler
+@dp.message(F.text == "Показать все созданные посты")
+async def default_showall(message: types.Message):
+    await message.answer("This part of the bot is work in progress")
 
-    file_id = m.photo[-1].file_id
-    # Retrieve file info from Telegram servers
-    file_info = bot.get_file(file_id)
-    # Download the file using the file path from file_info
-    downloaded_file = bot.download_file(file_info.file_path)
-
-    # Save the image to disk (or process it as needed)
-    save_input_path = f"imageloading/user_input_photos/{m.from_user.first_name}_input.jpg"
+# Handle photo upload
+@dp.message(StateFilter(PostStates.uploading_photo), F.photo)
+async def handle_photo(message: types.Message, state: FSMContext):
+    file_id = message.photo[-1].file_id
+    file_info = await bot.get_file(file_id)
+    downloaded_file = await bot.download_file(file_info.file_path)
+    downloaded_file = downloaded_file.read()
+    save_input_path = f"{input_absolute_folder}{message.from_user.first_name}_input.jpg"
     with open(save_input_path, "wb") as new_file:
         new_file.write(downloaded_file)
-    bot.send_message(m.chat.id, f"Фото принято и обрабатывается. Пожалуйста отправьте текст для помещения на фото.", reply_markup = None)
-    data['input_photo_path'] = absolute_path(save_input_path)
-    bot.register_next_step_handler(m, photo_text_handler, data)
 
-def photo_text_handler(m, data):
-    if m.text == "Остановить диалог":
-        bot.send_message(m.chat.id, 
-                             f"Диалог прекращен",
-                             reply_markup = markup_default())
-        try:
-            db.temporary_delete(m.chat.id)
-        except Exception as e:
-            print(e)
+    await message.answer("Фото принято. Теперь отправьте текст для фото.")
+    await state.update_data(input_photo_path=absolute_path(save_input_path))
+    await state.set_state(PostStates.photo_text)
 
-        return
 
-    absolute_input_path = data.get('input_photo_path')
-    if "\\" in m.text:
-        msg = bot.send_message(m.chat.id, "Пожалуйста не используйте '\\'")
+@dp.message(StateFilter(PostStates.uploading_photo), F.document, F.document.mime_type.startswith("image/"))
+async def handle_photo(message: types.Message, state: FSMContext):
+    file_id = message.document.file_id  # Get file ID
+    file_info = await bot.get_file(file_id)  # Get file info
+    file_path = file_info.file_path  # Telegram's file path
 
-        bot.register_next_step_handler(msg, photo_text_handler, data)
-        return
+    # 📥 Download the file
+    image_data = await bot.download_file(file_path)
 
-    safe_text = re.sub(r'[\/:*?"<>|]', '', m.text)
-    safe_first_name =  re.sub(r'[\/:*?"<>|]', '', m.from_user.first_name)
-    output_path_file = output_absolute_folder + f"/{safe_first_name}_{safe_text}_edited.png"
-    overlay_images(absolute_input_path, frame_absolute_path, output_path_file, m.text) 
+    save_input_path = f"{input_absolute_folder}{message.from_user.first_name}_input.jpg"
+    with open(save_input_path, "wb") as new_file:
+        new_file.write(image_data.read())
+
+    await message.answer("Фото принято как файл. Теперь отправьте текст для фото.")
+    await state.update_data(input_photo_path=absolute_path(save_input_path))
+    await state.set_state(PostStates.photo_text)
+
+
+# Handle invalid photo input
+@dp.message(StateFilter(PostStates.uploading_photo))
+async def invalid_photo(message: types.Message):
+    await message.answer("❌ Отправьте фото, а не текст.", reply_markup=markup_cancelation())
+
+
+# Handle photo text
+@dp.message(StateFilter(PostStates.photo_text), F.text)
+async def photo_text(message: types.Message, state: FSMContext):
+    safe_text = hashed( message.text)
+    safe_first_name = re.sub(r'[\/:*?"<>|]', '', message.from_user.first_name)
+    print(f"Safe text:{safe_text}")
+    print(f"message.text:{message.text}")
+
+    data = await state.get_data()
+    input_photo_path = data['input_photo_path']
+
+    output_path_file = f"{output_absolute_folder}/{safe_first_name}_{safe_text}_edited.png"
+    overlay_images(input_photo_path, frame_absolute_path, output_path_file, message.text)
+
+    await state.update_data(output_photo_path=output_path_file)
+    output_photo = FSInputFile(output_path_file)
+
     
-    if under_post_text_switch:
-        bot.send_message(m.chat.id,
-                    f"Отправьте текст который будет под постом."
-                     )
-        data['output_photo_path'] = output_path_file
-        bot.register_next_step_handler(m, post_text_handler, data)
-    else:
+    await message.answer_photo(output_photo)
+    await message.answer("Хотите продолжить или попробовать еще раз?", reply_markup=inline_verification("photo_text"))
 
-        with open(output_path_file, "rb") as photo:
 
-            bot.send_photo(m.chat.id, photo)
+@dp.message(StateFilter(PostStates.photo_text))
+async def invalid_text(message: types.Message, state: FSMContext):
+    await message.answer("Вы должны отправить Текст")
+
+# Handle post text
+@dp.message(StateFilter(PostStates.post_text))
+async def post_text(message: types.Message, state: FSMContext):
+    await state.update_data(post_text=message.text)
+    
+    await message.answer(f'Текст для поста: "{message.text}"\nПродолжим или хотите поменять текст на другой?', reply_markup=inline_verification("post_text"))
+
+
+@dp.message(F.document, F.document.mime_type == "application/pdf", StateFilter(PostStates.payment))
+async def payment_handle_pdf(message: types.Message, state: FSMContext):
+    await message.answer("✅ Ваш чек был принят. Если вы ошиблись, можете поменять файл перед тем как он будет сохранен и отправлен на обработку менеджера.",
+                         reply_markup = inline_verification("payment"))    
+    await state.update_data(receipt_id = message.document.file_id)
+
+
+@dp.message(F.photo, StateFilter(PostStates.payment))
+async def payment_invalid_photo(message: types.Message, state: FSMContext):
+    await message.answer("Пожалуйста отправьте чек в виду PDF файла. Фото чека не подойдет",
+                         reply_markup = markup_cancelation()
+                         )
+
+
+@dp.message(StateFilter(PostStates.payment))
+async def payment_invalid_rest(message: types.Message, state: FSMContext):
+    await message.answer("Пожалуйста отправьте чек в виду PDF файла.", 
+                         reply_markup = markup_cancelation()
+                         )
+
+
+
+# Handle verification callbacks
+@dp.callback_query(F.data.startswith(("confirm_", "retry_")))
+async def handle_verification(call: types.CallbackQuery, state: FSMContext):
+    step = call.data.split("_", 1)[1] if "_" in call.data else call.data
+
+    print(f"Callback data received: {call.data} and step: {step}")  # Log the callback data
+    if call.data.startswith("confirm_"):
+        if step == "photo_text":
+            if under_post_text_switch:
+                await state.set_state(PostStates.post_text)
+                await call.message.answer("Отправьте текст для поста", reply_markup=markup_cancelation())
+            else:
+                await state.set_state(PostStates.selecting_date)
+                today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+                next_month = datetime.today() + relativedelta(months=1)
+
+                calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+                calendar.set_dates_range(today, next_month)
+                await call.message.edit_text(
+                        f"Выберите дату публикации.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+                await call.answer()
+        elif step == "post_text":
+            await state.set_state(PostStates.selecting_date)
+            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+            next_month = datetime.today() + relativedelta(months=1)
+
+            calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+            calendar.set_dates_range(today, next_month)
+            await call.message.edit_text(
+                        f"Выберите дату публикации.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+            await call.answer()
+
+
+        elif step == "selecting_date":
+            await state.set_state(PostStates.selecting_time)
+            await call.message.edit_text("Теперь выберите время публикации.", reply_markup=build_hour_keyboard_clock())
+
+
+        elif step == "selecting_time":
+            await state.set_state(PostStates.final_verification)
+            data = await state.get_data()
+            if under_post_text_switch:
+                text = data.get('post_text')
+                date = data.get('post_date')
+                time = data.get('post_time')
+                post_text = f"{text}\nДата: {date}\nВремя: {time}"
+            else:
+                post_text = f"Дата: {data['post_date']}\nВремя: {data['post_time']}"
+
+            output_photo = FSInputFile(data['output_photo_path'])
+
+            await call.message.answer_photo(output_photo, caption=post_text)
+
+            await call.message.answer("Продолжим или если что-то хотите поменять начните заново", reply_markup=inline_verification("final_verification"))
+
+
+
+        elif step == "final_verification":
+            await call.message.answer("Оплатите 5 000тг через Kaspi номер: +7 705 406 60 26. После оплаты отправьте чек в виле PDF файла.", reply_markup = markup_cancelation()
+                                      )
+            await state.set_state(PostStates.payment)
         
-        bot.send_message(m.chat.id,
-                     f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначалo.",
-                         reply_markup = markup_verification()
-                     )
-        data['output_photo_path'] = output_path_file
-        data['post_text'] = None
-        bot.register_next_step_handler(m,verification_handler, data)
 
-def post_text_handler(m, data):
-    if m.text == "Остановить диалог":
-        bot.send_message(m.chat.id, 
-                             f"Диалог прекращен",
-                             reply_markup = markup_default())
-        try:
-            db.temporary_delete(m.chat.id)
-        except Exception as e:
-            print(e)
+        elif step == "payment":
+            await call.message.answer("Поздравляю, вы зарегистрировали новый пост для рекламы. В скором времени менеджер обработает вашу заявку!.",
+                                      reply_markup = markup_default())
+            
+            data = await state.get_data()
+            receipt_id = data.get("receipt_id")
+            file_info = await bot.get_file(receipt_id)
+            file_path = file_info.file_path
 
-        return
+            pdf_data = await bot.download_file(file_path)
+            save_path = f"{receipts_absolute_folder}{call.message.from_user.first_name}_{receipt_id}.pdf"
+            with open(save_path, 'wb') as f:
+                f.write(pdf_data.read())
 
-    photo_path = data.get('output_photo_path')
-    with open(photo_path, "rb") as photo:
-        bot.send_photo(m.chat.id, photo, caption = m.text)
+            # Здесь должен быть код по сохранению данных в дб
 
-    bot.send_message(m.chat.id,
-                     f"Это то, как будет выглядеть ваш пост. Если вам хотите изменить фото или текст, начните процесс сначал.",
-                     reply_markup = markup_verification()
-                     )
-    data['post_text'] = m.text
-    bot.register_next_step_handler(m, verification_handler, data)
+            await state.clear()
 
-def verification_handler(m, data):
-    if m.text == "Продолжить":
-        calendar, step = DetailedTelegramCalendar(locale="ru", min_date = date.today(), max_date = date.today() + relativedelta(months=1)).build()
-        bot.send_message(m.chat.id,
-                     f"Выберите дату выпуска поста.",
-                     reply_markup=calendar)
-        user_id = m.chat.id
-        photo_path = data.get('output_photo_path')
-        post_text = None
-        if under_post_text_switch:
-            post_text = data.get('post_text')
-        try:
-            db.temporary_write(user_id, photo_path, post_text)
-        except Exception as e:
-            print("Catched exception:", e)
+    elif call.data.startswith("retry_"):
+        if step == "photo_text":
+            await state.set_state(PostStates.uploading_photo)
+            await call.message.answer("Пожалуйста отправьте фото заново", reply_markup=markup_cancelation())
 
-    elif m.text == "Остановить диалог":
-        bot.send_message(m.chat.id, 
-                             f"Диалог прекращен",
-                             reply_markup = markup_default())
-        try:
-            db.temporary_delete(m.chat.id)
-        except Exception as e:
-            print(e)
 
-            return
-        data = {}
-        bot.register_next_step_handler(m, photo_handler, data)
+        elif step == "post_text":
+            await call.answer()
+            await state.set_state(PostStates.post_text)
+            await call.message.answer("Пожалуйста отправьте новый текст", reply_markup=markup_cancelation())
 
-def timepick_handler(m, date):
-    if m.text == "Остановить диалог":
-        bot.send_message(m.chat.id,
-                     f"Отправьте фото для поста.",
-                         reply_markup = markup_default())
-        try:
-            db.temporary_delete(m.chat.id)
-        except Exception as e:
-            print(e)
 
-        return
-    db.temporary_write_date(m.chat.id, date)
-    bot.send_message(m.chat.id, 
-                    f"Выберите время для выпуска поста.",
-                    reply_markup = timepicker
-                    )
+        elif step == "selecting_date":
 
-def final_verif(m, data):
-    if m.text == "Продолжить":
-        bot.send_message(m.chat.id,
-                         f"Оплатите по 5к по номеру +7 705 111 11 11, после чего отправьте пдф каспи чека сюда.")
-    elif m.text == "Остановить диалог":
-        bot.send_message(m.chat.id,
-                     f"Отправьте фото для поста.",
-                         reply_markup = markup_default())
-        try:
-            db.temporary_delete(m.chat.id)
-        except Exception as e:
-            print(e)
-        return
-        data = {}
-        bot.register_next_step_handler(m, photo_handler, data)
+            await state.set_state(PostStates.selecting_date)
+            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+            next_month = datetime.today() + relativedelta(months=1)
+
+            calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+            calendar.set_dates_range(today, next_month)
+            await call.message.edit_text(
+                        f"Выберите дату публикации.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+            await call.answer()
 
 
 
+        elif step == "selecting_time":
+            await state.set_state(PostStates.selecting_time)
+            await call.message.edit_text("Выберите новое время публикации.", reply_markup=build_hour_keyboard_clock())
 
-@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
-def calendar_proceed(c):
-    result, key, step = DetailedTelegramCalendar(locale="ru", min_date = date.today(), max_date = date.today() + relativedelta(months=1)).process(c.data)
-    if not result and key:
-        bot.edit_message_text(f"Выберите дату публикации",
-                              c.message.chat.id,
-                              c.message.message_id,
-                              reply_markup=key)
-    elif result:
-        bot.edit_message_text(f"Вы хотите опубликовать пост {result}",
-                              c.message.chat.id,
-                              c.message.message_id)
+
+        elif step == "final_verification":
+            await state.set_state(PostStates.uploading_photo)
+            await call.message.answer("Отправьте, пожалуйста, новое фото для поста.", reply_markup=markup_cancelation())
         
-        db.temporary_write_date(c.message.chat.id, result)
-        timepicker = build_hour_keyboard_clock()
-        msg = bot.send_message(c.message.chat.id, 
-                    f"Выберите время для выпуска поста.",
-                    reply_markup = timepicker
-                    )
+        elif step == "payment":
+            await state.set_state(PostStates.payment)
+            await call.message.answer("Отправьте пожалуйста новый чек.")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('hour_'))
-def timepicker_proceed(call):
+
+    await call.answer()
+
+# Handle calendar callback
+@dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(PostStates.selecting_date))
+async def selecting_date(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
+
+    calendar = SimpleCalendar(
+        locale="ru-RU", show_alerts=True
+    )
+    today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+    next_month = datetime.today() + relativedelta(months=1)
+
+    calendar.set_dates_range(today, next_month)
+    selected, date = await calendar.process_selection(callback_query, callback_data)
+    if selected:
+        await state.update_data(post_date=date.strftime("%d/%m/%Y"))
+        print("Checking the save of date: {date_test}")
+        await callback_query.message.answer(
+
+            f'You selected {date.strftime("%d/%m/%Y")}\nВы можете поменять дату если ошиблись.',
+            reply_markup = inline_verification("selecting_date")
+        )
+        # Handle time selection callback
+@dp.callback_query(F.data.startswith("hour_") | (F.data == "none"), StateFilter(PostStates.selecting_time))
+async def callback_inline(call: types.CallbackQuery, state: FSMContext):
     data = call.data
-    
+
     if data.startswith("hour_"):
         chosen_hour = data.split("_")[1]
-        
-        msg = bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=f"Hour chosen: {chosen_hour}"
-        )
-        bot.answer_callback_query(call.id)
-        
-        verif(msg,chosen_hour)
+        await state.update_data(post_time = chosen_hour)
+        # ✅ Edit message text to show the selected hour
+        await call.message.edit_text(f"Выбранное время: {chosen_hour}. Если вы можете поменять время если ошиблись.",
+                                     reply_markup = inline_verification("selecting_time")
+                                     )
 
+    await call.answer()  # ✅ Always close the callback query to avoid "loading" state
 
-def verif(m, chosen_hour):
-    if m.text == "Остановить диалог":
-        bot.send_message(m.chat.id, 
-                         f"Диалог прекращен",
-                         reply_markup = markup_default())
-        try:
-            db.temporary_delete(m.chat.id)
-        except Exception as e:
-            print(e)
-
-    data = db.temporary_read(m.chat.id)
-    photo_path = data[0]
-    post_text = data[1]
-    date = data[2]
-    temp_dict = {
-            'photo_path':photo_path,
-            'post_text':post_text,
-            'post_date':date,
-            'post_time':chosen_hour
-            }
-    if post_text:
-
-        post_text += "\nДата: " + str(date)
-        post_text += "\nВремя: " + str(chosen_hour)
-
-    else:
-        post_text = ""
-        post_text += "\nДата: " + str(date)
-        post_text += "\nВремя: " + str(chosen_hour)
-
-    with open(photo_path, 'rb') as photo:
-        bot.send_photo(m.chat.id, photo, caption = post_text)
-    msg = bot.send_message(m.chat.id,
-                     f"Все ли вас устраивает? Если нет, процесс нужно начать сначало. Для этого остановите диалог и начните его заново",
-                     reply_markup = markup_verification()
-                     )
-    bot.register_next_step_handler(msg, final_verif, temp_dict)           
-
-
-
-bot.polling()
+# Start polling
+if __name__ == '__main__':
+    dp.run_polling(bot)

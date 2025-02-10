@@ -1,55 +1,63 @@
-import cv2
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 from imageloading.resize_and_crop import resize_and_crop
+import os
 
-
-def overlay_images(background_path, foreground_path, output_path, text, font_scale=2.5, thickness=2):
+def overlay_images(background_path, foreground_path, output_path, text, font_scale=1.75, thickness=2):
     # Load images
-    background = cv2.imread(background_path)
-    foreground = cv2.imread(foreground_path, cv2.IMREAD_UNCHANGED)  # Keep alpha
+    background = Image.open(background_path).convert("RGBA")
+    foreground = Image.open(foreground_path).convert("RGBA")  # Keep alpha
+
     if background is None:
         print("input image hasn't loaded")
     if foreground is None:
         print("frame image didn't load")
 
-    h, w = foreground.shape[:2]
+    w, h = foreground.size
 
+    # Resize and crop background to match foreground dimensions
     background = resize_and_crop(background, w, h)
-    # If foreground has alpha channel, blend it with the background
-    if foreground.shape[2] == 4:
-        alpha_channel = foreground[:, :, 3] / 255.0
-        foreground = foreground[:, :, :3]  # Remove alpha
 
-        for c in range(3):  # Blend each channel (R, G, B)
-            background[:, :, c] = (1 - alpha_channel) * background[:, :, c] + alpha_channel * foreground[:, :, c]
+    # If foreground has alpha channel, blend it with the background
+    if foreground.mode == "RGBA":
+        # Create a new image to hold the blended result
+        blended = Image.new("RGBA", background.size)
+        blended.paste(background, (0, 0))
+        blended.paste(foreground, (0, 0), foreground)
+        background = blended.convert("RGB")  # Convert back to RGB for text rendering
 
     # Prepare text
     text_lines = text.split("_")  # Split text by "_" for new lines
 
+    # Load font
+    font_path = os.path.join(os.path.dirname(__file__), "NotoSans-Regular.ttf")
+    font_size = int(50 * font_scale)  # Adjust font size based on scale
+    font = ImageFont.truetype(font_path, font_size)
+
     # Define text properties
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_thickness = thickness
     font_color = (255, 255, 255)  # White text
-    margin = 100  # Margin from bottom
+    margin = 100  # Margin from top
 
     # Calculate text height to position correctly
-    text_size = cv2.getTextSize("A", font, font_scale, font_thickness)[0]  # Get height of a single character
-    line_height = text_size[1] + 10  # Add spacing between lines
+    draw = ImageDraw.Draw(background)
+    line_height = font_size + 10  # Add spacing between lines
 
-    # Position text from the bottom upwards
-    y_position = 840  # Start from the bottom
-    for line in text_lines:  # Draw from bottom to top
-        text_width, text_height = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
-
+    # Position text from the top downwards
+    y_position = 725  # Start from the top
+    for line in text_lines:  # Draw from top to bottom
+        # Measure text width and height
+        text_width = draw.textlength(line, font=font)
+        
         # Ensure text fits within image width (wrap text if too long)
+
         if text_width > w - 2 * margin:
             words = line.split(" ")
             wrapped_lines = []
             temp_line = ""
 
             for word in words:
-                temp_size = cv2.getTextSize(temp_line + " " + word, font, font_scale, font_thickness)[0][0]
-                if temp_size < w - 2 * margin:
+                temp_width = draw.textlength(temp_line + " " + word, font=font)
+                if temp_width < w - 2 * margin:
                     temp_line += " " + word
                 else:
                     wrapped_lines.append(temp_line.strip())
@@ -58,21 +66,18 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
             if temp_line:
                 wrapped_lines.append(temp_line.strip())
 
-            for wrapped_line in (wrapped_lines):
-                text_width, _ = cv2.getTextSize(wrapped_line, font, font_scale, font_thickness)[0]
-                x_position = (w - text_width) // 2  # Center align text
+            for wrapped_line in wrapped_lines:
+                temp_width = draw.textlength(wrapped_line, font=font)
+                x_position = (w - temp_width) // 2  # Center align text
                 y_position += line_height
-                cv2.putText(background, wrapped_line, (x_position, y_position), font, font_scale, font_color, font_thickness, cv2.LINE_AA)
+                draw.text((x_position, y_position), wrapped_line, font=font, fill=font_color)
+                  # Move to the next line
         
         else:
             x_position = (w - text_width) // 2  # Center align text
             y_position += line_height
-            cv2.putText(background, line, (x_position, y_position), font, font_scale, font_color, font_thickness, cv2.LINE_AA)
+            draw.text((x_position, y_position), line, font=font, fill=font_color)
+              # Move to the next line
 
-    # Save and display the output image
-    cv2.imwrite(output_path, background)
-
-# Example Usage
-# background = typeless_loader("background")
-# overlay_images(background, "foreground.png", "output.png", "is it??? ")
-
+    # Save the output image
+    background.save(output_path)
