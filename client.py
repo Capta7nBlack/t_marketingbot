@@ -12,15 +12,15 @@ from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import text
 
-from additional.hash import hashed
+from modules.hash import hashed
 
-from additional.timepicker import build_hour_keyboard_clock
+from modules.timepicker import build_hour_keyboard_clock
 
-from imageloading.imagemaker_cv2 import overlay_images
-from additional.get_absolute_path import absolute_path
-from additional.markup_states import markup_default, inline_verification, markup_cancelation
+from imageloading.imagemaker import overlay_images
+from modules.get_absolute_path import absolute_path
+from modules.markup_states import markup_default, inline_verification, markup_cancelation
 
-from config import frame_absolute_path, output_absolute_folder, bot_token, under_post_text_switch, receipts_folder_path
+from config import frame_absolute_path, output_absolute_folder, bot_token, under_post_text_switch, receipts_absolute_folder
 from config import input_absolute_folder
 
 from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, DialogCalendar, DialogCalendarCallback, get_user_locale
@@ -142,6 +142,7 @@ async def payment_handle_pdf(message: types.Message, state: FSMContext):
     await message.answer("✅ Ваш чек был принят. Если вы ошиблись, можете поменять файл перед тем как он будет сохранен и отправлен на обработку менеджера.",
                          reply_markup = inline_verification("payment"))    
     await state.update_data(receipt_id = message.document.file_id)
+    await state.update_data(username=message.from_user.first_name)
 
 
 @dp.message(F.photo, StateFilter(PostStates.payment))
@@ -240,7 +241,7 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             file_path = file_info.file_path
 
             pdf_data = await bot.download_file(file_path)
-            save_path = f"{receipts_absolute_folder}{call.message.from_user.first_name}_{receipt_id}.pdf"
+            save_path = f"{receipts_absolute_folder}{data.get('username')}_{receipt_id}.pdf"
             with open(save_path, 'wb') as f:
                 f.write(pdf_data.read())
 
