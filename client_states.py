@@ -178,7 +178,9 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
 
 
         elif step == "final_verification":
-            pass
+            await call.message.answer("Оплатите 5 000тг через Kaspi номер: +7 705 406 60 26. После оплаты отправьте .pdf ек.", reply_markup = markup_cancelation()
+                                      )
+            await state.set_state(PostStates.payment)
 
 
     elif call.data.startswith("retry_"):
