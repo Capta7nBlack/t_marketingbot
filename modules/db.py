@@ -1,7 +1,8 @@
 import sqlite3
 
+
 def open():
-    conn_func = sqlite3.connect("database.db")
+    conn_func = sqlite3.connect("modules/database.db")
     curr_func = conn_func.cursor()
     print("The db connection is opened")
     return conn_func, curr_func
@@ -24,39 +25,33 @@ def create():
              'post_text TEXT,'
              'post_date TEXT,'
              'post_time TEXT,'
-             'cancelled INTEGER,'
-             'temporary INTEGER, '
-             'kaspi TEXT'
+             'cancelled INTEGER DEFAULT 0,'
+             'hidden INTEGER DEFAULT 0, '
+             'kaspi_path TEXT'
              ')'
              )
-
     close(conn,curr)
 
-def temporary_delete(user_id):
+
+def new_write(user_id, photo_path, post_text, post_date, post_time, kaspi_path ):
     conn, curr = open()
-    curr.execute('DELETE FROM adds WHERE user_id = ? AND temporary = ?', (user_id, 1))
+    curr.execute('INSERT INTO adds (user_id, photo_path, post_text, post_date, post_time, kaspi_path ) VALUES (?,?,?,?,?,?)', (user_id, photo_path, post_text, post_date, post_time, kaspi_path))
     close(conn,curr)
 
 
-def temporary_write(user_id, photo_path, post_text ):
+def show_all(user_id, min_date=None, max_date=None):
     conn, curr = open()
-    curr.execute('INSERT INTO adds (photo_path, post_text,user_id, temporary) VALUES (?,?,?,?)', (photo_path, post_text, user_id, 1))
-    close(conn,curr)
-
-def temporary_write_date(user_id, date):
-    conn, curr = open()
-    curr.execute('UPDATE adds SET post_date = ? WHERE temporary = ? AND user_id = ?', (date, 1, user_id))
-    close(conn,curr)
-
-
-
-def temporary_read(user_id):
-    conn, curr = open()
-    curr.execute('SELECT photo_path, post_text, post_date FROM adds WHERE temporary = ? AND user_id = ?', (1, user_id))
-    data = curr.fetchone()
-    close(conn,curr)
+    query = 'SELECT photo_path, post_text, post_date, post_time, kaspi_path FROM adds WHERE user_id = ? AND hidden = ?;'
+    hidden = 0
+    curr.execute(query,(user_id, hidden))
+    data = curr.fetchall()
     return data
-    
+
+
+
+
+
+
 
 
 

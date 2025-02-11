@@ -13,23 +13,31 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import text
 
 from modules.hash import hashed
-
 from modules.timepicker import build_hour_keyboard_clock
+from modules import db
+from modules.markup_states import markup_default, inline_verification, markup_cancelation
+from modules.get_absolute_path import absolute_path
 
 from imageloading.imagemaker import overlay_images
-from modules.get_absolute_path import absolute_path
-from modules.markup_states import markup_default, inline_verification, markup_cancelation
 
-from config import frame_absolute_path, output_absolute_folder, bot_token, under_post_text_switch, receipts_absolute_folder
-from config import input_absolute_folder
+from config import frame_absolute_path, output_absolute_folder, user_bot_token, under_post_text_switch 
+from config import input_absolute_folder, receipts_absolute_folder, admin_telegram
 
-from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, DialogCalendar, DialogCalendarCallback, get_user_locale
+
+
+from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, get_user_locale
 from aiogram.filters.callback_data import CallbackData
 
 # Initialize bot and dispatcher
-bot = Bot(token=bot_token)
+bot = Bot(token=user_bot_token)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+try:
+   db.create()
+except Exception as e:
+    print("Случился казус:", e)
+
 
 # Define states
 class PostStates(StatesGroup):
@@ -49,19 +57,46 @@ async def cancel_conversation(message: types.Message, state: FSMContext):
 
 # Start command handler
 @dp.message(Command("start"))
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer(f"Здравствуйте {message.from_user.first_name}, добро пожаловать!", reply_markup=markup_default())
 
 # Create post handler
 @dp.message(F.text == "Создать рекламный пост")
 async def default_create(message: types.Message, state: FSMContext):
+    await state.clear()
     await state.set_state(PostStates.uploading_photo)
     await message.answer("Отправьте, пожалуйста, фото для поста.", reply_markup=markup_cancelation())
 
 # Show all posts handler
 @dp.message(F.text == "Показать все созданные посты")
-async def default_showall(message: types.Message):
-    await message.answer("This part of the bot is work in progress")
+async def default_showall(message: types.Message, state: FSMContext):
+
+    await state.clear()
+
+    data = db.show_all(message.chat.id)
+    i = 1
+    if data:
+        for photo_path, post_text, post_date, post_time, kaspi_path in data:
+            
+            if post_text: 
+                post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
+            else:
+                post_text = f"Дата: {post_date}\nВремя: {post_time}"
+            distance = "\n---\n---\n---"
+
+            output_photo = FSInputFile(photo_path)
+            pdf_file = FSInputFile(kaspi_path)
+            await message.answer(f"Пост номер: {i}")
+            i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
+            await message.answer_photo(output_photo,caption = post_text)
+            await message.answer_document(pdf_file, caption=distance)
+        await message.answer(f"Если вы хотите отменить рекламный пост и сделать возврат средств, то обратитесь к менеджеру - {admin_telegram}")
+
+    else:
+        await message.answer(f"Вы еще не создали ни одного поста для рекламы. Для этого чтобы это сделать нажмите кнопку 'Создать рекламный пост'", reply_markup = markup_default()
+                             )
+
 
 # Handle photo upload
 @dp.message(StateFilter(PostStates.uploading_photo), F.photo)
@@ -120,7 +155,6 @@ async def photo_text(message: types.Message, state: FSMContext):
     await state.update_data(output_photo_path=output_path_file)
     output_photo = FSInputFile(output_path_file)
 
-    
     await message.answer_photo(output_photo)
     await message.answer("Хотите продолжить или попробовать еще раз?", reply_markup=inline_verification("photo_text"))
 
@@ -234,7 +268,7 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
         elif step == "payment":
             await call.message.answer("Поздравляю, вы зарегистрировали новый пост для рекламы. В скором времени менеджер обработает вашу заявку!.",
                                       reply_markup = markup_default())
-            
+                        
             data = await state.get_data()
             receipt_id = data.get("receipt_id")
             file_info = await bot.get_file(receipt_id)
@@ -246,6 +280,15 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
                 f.write(pdf_data.read())
 
             # Здесь должен быть код по сохранению данных в дб
+            
+            data = await state.get_data()
+            photo_path = data.get('output_photo_path')
+            post_text = data.get('post_text', None)
+            post_date = data.get('post_date')
+            post_time = data.get('post_time')
+            kaspi_path = save_path
+            db.new_write(call.message.chat.id, photo_path, post_text, post_date, post_time, kaspi_path)
+
 
             await state.clear()
 
