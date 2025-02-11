@@ -282,12 +282,15 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             # Здесь должен быть код по сохранению данных в дб
             
             data = await state.get_data()
+            user_id = call.message.chat.id
+            username = call.message.from_user.username
             photo_path = data.get('output_photo_path')
             post_text = data.get('post_text', None)
             post_date = data.get('post_date')
+            print(post_date)
             post_time = data.get('post_time')
             kaspi_path = save_path
-            db.new_write(call.message.chat.id, photo_path, post_text, post_date, post_time, kaspi_path)
+            db.new_write(user_id, username, photo_path, post_text, post_date, post_time, kaspi_path)
 
 
             await state.clear()
@@ -351,11 +354,10 @@ async def selecting_date(callback_query: types.CallbackQuery,callback_data: Call
     calendar.set_dates_range(today, next_month)
     selected, date = await calendar.process_selection(callback_query, callback_data)
     if selected:
-        await state.update_data(post_date=date.strftime("%d/%m/%Y"))
-        print("Checking the save of date: {date_test}")
+        await state.update_data(post_date=date.strftime("%Y-%m-%d"))
         await callback_query.message.answer(
 
-            f'You selected {date.strftime("%d/%m/%Y")}\nВы можете поменять дату если ошиблись.',
+            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")}\nВы можете поменять дату если ошиблись.',
             reply_markup = inline_verification("selecting_date")
         )
         # Handle time selection callback

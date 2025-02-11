@@ -27,15 +27,16 @@ def create():
              'post_time TEXT,'
              'cancelled INTEGER DEFAULT 0,'
              'hidden INTEGER DEFAULT 0, '
-             'kaspi_path TEXT'
+             'kaspi_path TEXT,'
+             'username TEXT'
              ')'
              )
     close(conn,curr)
 
 
-def new_write(user_id, photo_path, post_text, post_date, post_time, kaspi_path ):
+def new_write(user_id, username, photo_path, post_text, post_date, post_time, kaspi_path ):
     conn, curr = open()
-    curr.execute('INSERT INTO adds (user_id, photo_path, post_text, post_date, post_time, kaspi_path ) VALUES (?,?,?,?,?,?)', (user_id, photo_path, post_text, post_date, post_time, kaspi_path))
+    curr.execute('INSERT INTO adds (user_id, username, photo_path, post_text, post_date, post_time, kaspi_path ) VALUES (?,?,?,?,?,?,?)', (user_id, username, photo_path, post_text, post_date, post_time, kaspi_path))
     close(conn,curr)
 
 

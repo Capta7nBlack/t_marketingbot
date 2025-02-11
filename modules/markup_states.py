@@ -3,9 +3,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 def markup_default():
     """Creates the default reply keyboard with main options."""
+
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Создать рекламный пост"), KeyboardButton(text="Показать все созданные посты")]
+        ],
+        resize_keyboard=True
+    )
+def markup_manager_default():
+    """Creates the default reply keyboard with main options."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Показать посты на сегодня"), KeyboardButton(text="Показать посты на завтра")],
+            [KeyboardButton(text="Показать посты за промежуток времени")]
         ],
         resize_keyboard=True
     )
@@ -26,3 +36,9 @@ def markup_cancelation():
         ],
         resize_keyboard=True
     )
+
+
+
+
+
+
