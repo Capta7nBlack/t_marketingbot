@@ -49,6 +49,17 @@ def show_all(user_id, min_date=None, max_date=None):
     return data
 
 
+def show_between(min_date, max_date):
+    conn, curr = open()
+    query = '''
+    SELECT photo_path, post_text, post_date, post_time, kaspi_path 
+    FROM adds 
+    WHERE post_date BETWEEN ? AND ?;
+            '''    
+    hidden = 0
+    curr.execute(query,(min_date, max_date))
+    data = curr.fetchall()
+    return data
 
 
 

@@ -1,6 +1,10 @@
 from config import manager_bot_token, allowed_users
 from modules.markup_states import markup_manager_default
 
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
+from modules import db
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
@@ -22,16 +26,20 @@ dp = Dispatcher(storage=storage)
 
 
 
-class Authorization(StatesGroup):
+class Manager(StatesGroup):
     authorized = State()
+    min_date = State()
+    max_date = State()
+
 
 @dp.message(Command("start"))
 async def start(message: types.Message, state: FSMContext):
+    await state.clear()
     username = message.from_user.username  # Get the sender's username
     print(username)
     
     if username in allowed_users or "@" + username in allowed_users or username[1:] in allowed_users:
-        await state.set_state(Authorization.authorized)
+        await state.set_state(Manager.authorized)
         await message.reply(f"Welcome, {username}! You are authorized. ✅",
                             reply_markup = markup_manager_default()
                             )
@@ -39,8 +47,122 @@ async def start(message: types.Message, state: FSMContext):
         await message.reply("❌ You are not authorized to use this bot.")
 
 
-# @dp.message(StateFilter(Authorized.authorized))
+@dp.message(StateFilter(Manager.authorized))
+async def show_between(message: types.Message, state: FSMContext):
+    if message.text == "Показать посты за промежуток времени":
 
+        await state.set_state(Manager.min_date)
+
+        calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+        await message.answer(
+                        f"Выберите стартовую и конечную дату диапозона для постов.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+
+    elif message.text == "Показать посты на сегодня":
+        
+        today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_str = today.strftime("%Y-%m-%d")
+
+        data = db.show_between(today_str,today_str)
+        i = 1
+        if data:
+                for photo_path, post_text, post_date, post_time, kaspi_path in data:
+                    
+                    if post_text: 
+                        post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
+                    else:
+                        post_text = f"Дата: {post_date}\nВремя: {post_time}"
+                    distance = "\n---\n---\n---"
+
+                    output_photo = FSInputFile(photo_path)
+                    pdf_file = FSInputFile(kaspi_path)
+                    await message.answer(f"Пост номер: {i}", 
+                                                        reply_markup=markup_manager_default()
+                                                        )
+                    i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
+                    await message.answer_document(output_photo,caption = post_text)
+                    await message.answer_document(pdf_file, caption=distance)
+
+        else:
+            await message.answer(f"В этом промежутке времене не было зарегистрировано рекламных постов.",
+                                                reply_markup=markup_manager_default()
+                                                )
+
+        await state.set_state(Manager.authorized)
+
+                    
+
+@dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(Manager.min_date))
+async def selecting_min(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
+
+    calendar = SimpleCalendar(
+        locale="ru-RU", show_alerts=True
+    )
+
+    selected, date = await calendar.process_selection(callback_query, callback_data)
+    if selected:
+        
+        calendar_max = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+
+        min_date = date.strftime("%Y-%m-%d")
+        mindate_object = datetime.strptime(min_date, "%Y-%m-%d")
+        next_year = mindate_object + relativedelta(years=1)
+
+        calendar_max.set_dates_range(mindate_object, next_year)
+
+        await state.update_data(min_date=min_date)
+        await state.set_state(Manager.max_date)
+
+        await callback_query.message.answer(
+
+            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")} как стартовую дату.\nТеперь выберите конечную дату.',
+            reply_markup = await calendar_max.start_calendar()
+            )
+
+@dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(Manager.max_date))
+async def selecting_max(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
+    calendar = SimpleCalendar(
+        locale="ru-RU", show_alerts=True
+    )
+
+    selected, date = await calendar.process_selection(callback_query, callback_data)
+    if selected:
+        await callback_query.message.answer(
+            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")} как конечную дату.',
+            reply_markup = markup_manager_default()
+            )
+    
+    data_date = await state.get_data() 
+    min_date = data_date.get('min_date')
+    max_date = date.strftime("%Y-%m-%d")
+    data = db.show_between(min_date,max_date)
+    i = 1
+    if data:
+            for photo_path, post_text, post_date, post_time, kaspi_path in data:
+                
+                if post_text: 
+                    post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
+                else:
+                    post_text = f"Дата: {post_date}\nВремя: {post_time}"
+                distance = "\n---\n---\n---"
+
+                output_photo = FSInputFile(photo_path)
+                pdf_file = FSInputFile(kaspi_path)
+                await callback_query.message.answer(f"Пост номер: {i}")
+                i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
+                await callback_query.message.answer_document(output_photo,caption = post_text)
+                await callback_query.message.answer_document(pdf_file, caption=distance)
+
+    else:
+        await callback_query.message.answer(f"В этом промежутке времене не было зарегистрировано рекламных постов.")
+    await callback_query.answer()
+
+    await state.set_state(Manager.authorized)
 
 
 

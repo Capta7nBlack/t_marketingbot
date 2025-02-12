@@ -89,7 +89,7 @@ async def default_showall(message: types.Message, state: FSMContext):
             pdf_file = FSInputFile(kaspi_path)
             await message.answer(f"Пост номер: {i}")
             i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
-            await message.answer_photo(output_photo,caption = post_text)
+            await message.answer_document(output_photo,caption = post_text)
             await message.answer_document(pdf_file, caption=distance)
         await message.answer(f"Если вы хотите отменить рекламный пост и сделать возврат средств, то обратитесь к менеджеру - {admin_telegram}")
 
