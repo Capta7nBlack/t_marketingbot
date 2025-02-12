@@ -1,4 +1,4 @@
-under_post_text_switch = False # True for accepting user post text / False for skipping post text
+under_post_text_switch = False
 
 user_bot_token = ""
 manager_bot_token = ""
@@ -11,4 +11,7 @@ output_absolute_folder = "D:/Projects/taddbot/imageloading/user_edited_photos"
 
 receipts_absolute_folder = "D:/Projects/taddbot/receipts/"
 
-admin_telegram = ""
+admin_telegram = "" # Manager telegram for users to contact. Should be like @username
+allowed_users = [''] #list of usernames that can access manager_bot
+
+db_path = "D:/Projects/taddbot/modules/database.db"

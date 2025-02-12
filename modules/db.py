@@ -1,8 +1,14 @@
 import sqlite3
 
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from config import db_path
+
 
 def open():
-    conn_func = sqlite3.connect("modules/database.db")
+    conn_func = sqlite3.connect(db_path)
     curr_func = conn_func.cursor()
     print("The db connection is opened")
     return conn_func, curr_func
