@@ -15,7 +15,7 @@ def markup_manager_default():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Показать посты на сегодня")],
-            [KeyboardButton(text="Показать посты за промежуток времени")]
+            [KeyboardButton(text="Показать посты за промежуток времени"), KeyboardButton(text="Показать посты за конкретную дату")]
         ],
         resize_keyboard=True
     )

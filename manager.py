@@ -30,6 +30,7 @@ class Manager(StatesGroup):
     authorized = State()
     min_date = State()
     max_date = State()
+    specific_date = State()
 
 
 @dp.message(Command("start"))
@@ -47,10 +48,8 @@ async def start(message: types.Message, state: FSMContext):
         await message.reply("❌ You are not authorized to use this bot.")
 
 
-@dp.message(StateFilter(Manager.authorized))
+@dp.message(StateFilter(Manager.authorized), F.text == "Показать посты за промежуток времени")
 async def show_between(message: types.Message, state: FSMContext):
-    if message.text == "Показать посты за промежуток времени":
-
         await state.set_state(Manager.min_date)
 
         calendar = SimpleCalendar(
@@ -60,8 +59,10 @@ async def show_between(message: types.Message, state: FSMContext):
                         f"Выберите стартовую и конечную дату диапозона для постов.",
                            reply_markup=await calendar.start_calendar()
                            )
-
-    elif message.text == "Показать посты на сегодня":
+ 
+@dp.message(StateFilter(Manager.authorized), F.text == "Показать посты на сегодня")
+async def show_today(message: types.Message, state: FSMContext):
+        await state.set_state(Manager.authorized)
         
         today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
         today_str = today.strftime("%Y-%m-%d")
@@ -87,13 +88,27 @@ async def show_between(message: types.Message, state: FSMContext):
                     await message.answer_document(pdf_file, caption=distance)
 
         else:
-            await message.answer(f"В этом промежутке времене не было зарегистрировано рекламных постов.",
+            await message.answer(f"На сегодня нет рекламных постов",
                                                 reply_markup=markup_manager_default()
                                                 )
 
         await state.set_state(Manager.authorized)
 
                     
+@dp.message(StateFilter(Manager.authorized), F.text == "Показать посты за конкретную дату")
+async def show_specific(message: types.Message, state: FSMContext):
+    await state.set_state(Manager.specific_date)
+
+    calendar = SimpleCalendar(
+                locale='ru-RU', show_alerts=True
+                )
+    await message.answer(
+                        f"Выберите дату в которой хотите видеть список постов.",
+                           reply_markup=await calendar.start_calendar()
+                           )
+                  
+
+
 
 @dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(Manager.min_date))
 async def selecting_min(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
@@ -163,6 +178,52 @@ async def selecting_max(callback_query: types.CallbackQuery,callback_data: Callb
     await callback_query.answer()
 
     await state.set_state(Manager.authorized)
+
+@dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(Manager.specific_date))
+async def selecting_specific(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
+
+    calendar = SimpleCalendar(
+        locale="ru-RU", show_alerts=True
+    )
+
+    selected, date = await calendar.process_selection(callback_query, callback_data)
+    if selected:
+        await state.set_state(Manager.authorized)
+        specific_date = date.strftime("%Y-%m-%d")
+        await callback_query.message.answer(
+
+            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")}.',
+            reply_markup = markup_manager_default()
+            )
+
+    
+    data = db.show_between(specific_date,specific_date)
+    i = 1
+    if data:
+            for photo_path, post_text, post_date, post_time, kaspi_path in data:
+                
+                if post_text: 
+                    post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
+                else:
+                    post_text = f"Дата: {post_date}\nВремя: {post_time}"
+                distance = "\n---\n---\n---"
+
+                output_photo = FSInputFile(photo_path)
+                pdf_file = FSInputFile(kaspi_path)
+                await callback_query.message.answer(f"Пост номер: {i}",
+                                                    reply_markup = markup_manager_default()
+                                                    )
+                i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
+                await callback_query.message.answer_document(output_photo,caption = post_text)
+                await callback_query.message.answer_document(pdf_file, caption=distance)
+
+    else:
+        await callback_query.message.answer(f"В этой дате не было зарегистрировано рекламных постов.")
+    await callback_query.answer()
+
+    await state.set_state(Manager.authorized)
+
+
 
 
 
