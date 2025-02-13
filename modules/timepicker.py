@@ -11,15 +11,13 @@ def build_hour_keyboard_clock() -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup(inline_keyboard=[])
 
     # This 2D list represents the 'shape' of the clock
+    
     clock_layout = [
-        [0,  0,  0, 12, 0,  0,  0],
-        [0,  0, 11,  0, 13,  0,  0],
-        [0, 10,  0,  0, 0,  14,  0],
-        [9,  0,  0,  0, 0,  0,  15],
-        [0,  8,  0,  0, 0,  16,  0],
-        [0,  0,  7,  0, 17,  0,  0],
-        [0,  0,  0,  18, 0,  0,  0]
+        [9,  12, 15],
+        [17, 18, 19],
+        [20, 21, 22]
     ]
+
 
     for row in clock_layout:
         buttons = []
