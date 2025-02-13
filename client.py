@@ -17,6 +17,9 @@ from modules.timepicker import build_hour_keyboard_clock
 from modules import db
 from modules.markup_states import markup_default, inline_verification, markup_cancelation
 from modules.get_absolute_path import absolute_path
+from modules.datepicker import create_calendar
+from modules.datepicker import months_ru
+
 
 from imageloading.imagemaker import overlay_images
 
@@ -24,9 +27,6 @@ from config import frame_absolute_path, output_absolute_folder, user_bot_token, 
 from config import input_absolute_folder, receipts_absolute_folder, admin_telegram
 
 
-
-from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback, get_user_locale
-from aiogram.filters.callback_data import CallbackData
 
 # Initialize bot and dispatcher
 bot = Bot(token=user_bot_token)
@@ -78,11 +78,14 @@ async def default_showall(message: types.Message, state: FSMContext):
     i = 1
     if data:
         for photo_path, post_text, post_date, post_time, kaspi_path in data:
-            
+            print(post_date)
+            date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
+            formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
+                
             if post_text: 
-                post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
+                post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
             else:
-                post_text = f"Дата: {post_date}\nВремя: {post_time}"
+                post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
             distance = "\n---\n---\n---"
 
             output_photo = FSInputFile(photo_path)
@@ -207,30 +210,18 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
                 await call.message.answer("Отправьте текст для поста", reply_markup=markup_cancelation())
             else:
                 await state.set_state(PostStates.selecting_date)
-                today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
-                next_month = datetime.today() + relativedelta(months=1)
 
-                calendar = SimpleCalendar(
-                locale='ru-RU', show_alerts=True
-                )
-                calendar.set_dates_range(today, next_month)
                 await call.message.edit_text(
                         f"Выберите дату публикации.",
-                           reply_markup=await calendar.start_calendar()
+                           reply_markup=create_calendar()
                            )
                 await call.answer()
         elif step == "post_text":
             await state.set_state(PostStates.selecting_date)
-            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
-            next_month = datetime.today() + relativedelta(months=1)
 
-            calendar = SimpleCalendar(
-                locale='ru-RU', show_alerts=True
-                )
-            calendar.set_dates_range(today, next_month)
             await call.message.edit_text(
                         f"Выберите дату публикации.",
-                           reply_markup=await calendar.start_calendar()
+                           reply_markup=create_calendar()
                            )
             await call.answer()
 
@@ -242,14 +233,21 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
 
         elif step == "selecting_time":
             await state.set_state(PostStates.final_verification)
+
             data = await state.get_data()
-            if under_post_text_switch:
-                text = data.get('post_text')
-                date = data.get('post_date')
-                time = data.get('post_time')
-                post_text = f"{text}\nДата: {date}\nВремя: {time}"
+
+            post_text = data.get('post_text', None) 
+            post_date = data.get('post_date')
+            post_time = data.get('post_time')
+
+            date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
+            formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
+
+              
+            if post_text: 
+                post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
             else:
-                post_text = f"Дата: {data['post_date']}\nВремя: {data['post_time']}"
+                post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
 
             output_photo = FSInputFile(data['output_photo_path'])
 
@@ -310,16 +308,10 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
         elif step == "selecting_date":
 
             await state.set_state(PostStates.selecting_date)
-            today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
-            next_month = datetime.today() + relativedelta(months=1)
 
-            calendar = SimpleCalendar(
-                locale='ru-RU', show_alerts=True
-                )
-            calendar.set_dates_range(today, next_month)
             await call.message.edit_text(
                         f"Выберите дату публикации.",
-                           reply_markup=await calendar.start_calendar()
+                           reply_markup=create_calendar()
                            )
             await call.answer()
 
@@ -342,25 +334,27 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 # Handle calendar callback
-@dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(PostStates.selecting_date))
-async def selecting_date(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
+@dp.callback_query(F.data.startswith("date_"), StateFilter(PostStates.selecting_date))
+async def selecting_date(callback: types.CallbackQuery, state: FSMContext):
+    selected_date = callback.data.replace("date_", "")
+    
+    date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
+    formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
 
-    calendar = SimpleCalendar(
-        locale="ru-RU", show_alerts=True
-    )
-    today = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
-    next_month = datetime.today() + relativedelta(months=1)
+    await state.update_data(post_date=selected_date)
+    print("In callback of calendar")
+    print(selected_date)
+    data = await state.get_data()
+    print(data.get('post_date'))
 
-    calendar.set_dates_range(today, next_month)
-    selected, date = await calendar.process_selection(callback_query, callback_data)
-    if selected:
-        await state.update_data(post_date=date.strftime("%Y-%m-%d"))
-        await callback_query.message.answer(
-
-            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")}\nВы можете поменять дату если ошиблись.',
+    await callback.message.edit_text(
+            f'Вы выбрали {formatted_date}.\nВы можете поменять дату если ошиблись.',
             reply_markup = inline_verification("selecting_date")
         )
-        # Handle time selection callback
+    await callback.answer()     
+
+
+
 @dp.callback_query(F.data.startswith("hour_") | (F.data == "none"), StateFilter(PostStates.selecting_time))
 async def callback_inline(call: types.CallbackQuery, state: FSMContext):
     data = call.data

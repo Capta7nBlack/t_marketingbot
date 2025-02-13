@@ -1,10 +1,11 @@
 from config import manager_bot_token, allowed_users
-from modules.markup_states import markup_manager_default
 
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 from modules import db
+from modules.markup_states import markup_manager_default
+from modules.datepicker import months_ru
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
@@ -72,10 +73,14 @@ async def show_today(message: types.Message, state: FSMContext):
         if data:
                 for photo_path, post_text, post_date, post_time, kaspi_path in data:
                     
+                    
+                    date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
+                    formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
+                        
                     if post_text: 
-                        post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
+                        post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
                     else:
-                        post_text = f"Дата: {post_date}\nВремя: {post_time}"
+                        post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
                     distance = "\n---\n---\n---"
 
                     output_photo = FSInputFile(photo_path)
@@ -133,9 +138,11 @@ async def selecting_min(callback_query: types.CallbackQuery,callback_data: Callb
         await state.update_data(min_date=min_date)
         await state.set_state(Manager.max_date)
 
+        formatted_date = f"{date.year}, {date.day} {months_ru[date.month]}"
+
         await callback_query.message.answer(
 
-            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")} как стартовую дату.\nТеперь выберите конечную дату.',
+            f'Вы выбрали {formatted_date} как стартовую дату.\nТеперь выберите конечную дату.',
             reply_markup = await calendar_max.start_calendar()
             )
 
@@ -146,38 +153,47 @@ async def selecting_max(callback_query: types.CallbackQuery,callback_data: Callb
     )
 
     selected, date = await calendar.process_selection(callback_query, callback_data)
+
+
     if selected:
+
+        formatted_date = f"{date.year}, {date.day} {months_ru[date.month]}"
         await callback_query.message.answer(
-            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")} как конечную дату.',
+            f'Вы выбрали {formatted_date} как конечную дату.',
             reply_markup = markup_manager_default()
             )
     
-    data_date = await state.get_data() 
-    min_date = data_date.get('min_date')
-    max_date = date.strftime("%Y-%m-%d")
-    data = db.show_between(min_date,max_date)
-    i = 1
-    if data:
-            for photo_path, post_text, post_date, post_time, kaspi_path in data:
-                
-                if post_text: 
-                    post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
-                else:
-                    post_text = f"Дата: {post_date}\nВремя: {post_time}"
-                distance = "\n---\n---\n---"
+        data_date = await state.get_data() 
+        min_date = data_date.get('min_date')
+        max_date = date.strftime("%Y-%m-%d")
+        data = db.show_between(min_date,max_date)
+        i = 1
+        if data:
+                for photo_path, post_text, post_date, post_time, kaspi_path in data:
+                    
+                    
+                    date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
+                    formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
+                        
+                    if post_text: 
+                        post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
+                    else:
+                        post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
+                    distance = "\n---\n---\n---"
 
-                output_photo = FSInputFile(photo_path)
-                pdf_file = FSInputFile(kaspi_path)
-                await callback_query.message.answer(f"Пост номер: {i}")
-                i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
-                await callback_query.message.answer_document(output_photo,caption = post_text)
-                await callback_query.message.answer_document(pdf_file, caption=distance)
+                    output_photo = FSInputFile(photo_path)
+                    pdf_file = FSInputFile(kaspi_path)
+                    await callback_query.message.answer(f"Пост номер: {i}")
+                    i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
+                    await callback_query.message.answer_document(output_photo,caption = post_text)
+                    await callback_query.message.answer_document(pdf_file, caption=distance)
+                    await state.set_state(Manager.authorized)
+        else:
+            await callback_query.message.answer(f"В этом промежутке времене не было зарегистрировано рекламных постов.")
+            await state.set_state(Manager.authorized)
+        await callback_query.answer()
 
-    else:
-        await callback_query.message.answer(f"В этом промежутке времене не было зарегистрировано рекламных постов.")
-    await callback_query.answer()
-
-    await state.set_state(Manager.authorized)
+        
 
 @dp.callback_query(SimpleCalendarCallback.filter(), StateFilter(Manager.specific_date))
 async def selecting_specific(callback_query: types.CallbackQuery,callback_data: CallbackData, state: FSMContext):
@@ -187,41 +203,50 @@ async def selecting_specific(callback_query: types.CallbackQuery,callback_data: 
     )
 
     selected, date = await calendar.process_selection(callback_query, callback_data)
-    if selected:
-        await state.set_state(Manager.authorized)
-        specific_date = date.strftime("%Y-%m-%d")
-        await callback_query.message.answer(
 
-            f'Вы выбрали {date.strftime("%Yy-%mm-%dd")}.',
+
+    specific_date = ""
+
+    if selected:
+
+        specific_date = date.strftime("%Y-%m-%d")
+        await state.set_state(Manager.authorized)
+        formatted_date = f"{date.year}, {date.day} {months_ru[date.month]}"
+        await callback_query.message.answer(
+            f'Вы выбрали {formatted_date}.',
             reply_markup = markup_manager_default()
             )
 
-    
-    data = db.show_between(specific_date,specific_date)
-    i = 1
-    if data:
-            for photo_path, post_text, post_date, post_time, kaspi_path in data:
-                
-                if post_text: 
-                    post_text = f"{post_text}\nДата: {post_date}\nВремя: {post_time}"
-                else:
-                    post_text = f"Дата: {post_date}\nВремя: {post_time}"
-                distance = "\n---\n---\n---"
+         
+        data = db.show_between(specific_date,specific_date)
+        i = 1
+        if data:
+                for photo_path, post_text, post_date, post_time, kaspi_path in data:
+                    
+                    
+                    date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
+                    formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
+                        
+                    if post_text: 
+                        post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
+                    else:
+                        post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
+                    distance = "\n---\n---\n---"
 
-                output_photo = FSInputFile(photo_path)
-                pdf_file = FSInputFile(kaspi_path)
-                await callback_query.message.answer(f"Пост номер: {i}",
-                                                    reply_markup = markup_manager_default()
-                                                    )
-                i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
-                await callback_query.message.answer_document(output_photo,caption = post_text)
-                await callback_query.message.answer_document(pdf_file, caption=distance)
+                    output_photo = FSInputFile(photo_path)
+                    pdf_file = FSInputFile(kaspi_path)
+                    await callback_query.message.answer(f"Пост номер: {i}",
+                                                        reply_markup = markup_manager_default()
+                                                        )
+                    i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
+                    await callback_query.message.answer_document(output_photo,caption = post_text)
+                    await callback_query.message.answer_document(pdf_file, caption=distance)
+                    await state.set_state(Manager.authorized)
+        else:
+            await callback_query.message.answer(f"В этой дате не было зарегистрировано рекламных постов.")
+            await state.set_state(Manager.authorized)
 
-    else:
-        await callback_query.message.answer(f"В этой дате не было зарегистрировано рекламных постов.")
-    await callback_query.answer()
-
-    await state.set_state(Manager.authorized)
+        await callback_query.answer()
 
 
 

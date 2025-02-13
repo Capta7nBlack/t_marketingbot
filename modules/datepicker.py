@@ -23,7 +23,7 @@ items_per_column = 3
 def create_calendar():
 
 
-    months_ru = {
+    months_ru_abb = {
         "Jan": "Янв", "Feb": "Фев", "Mar": "Мар", "Apr": "Апр",
         "May": "Май", "Jun": "Июн", "Jul": "Июл", "Aug": "Авг",
         "Sep": "Сен", "Oct": "Окт", "Nov": "Ноя", "Dec": "Дек"
@@ -39,7 +39,7 @@ def create_calendar():
         builder.button(
             text=(today + timedelta(days=i)).strftime("%d %b").replace(
                 (today + timedelta(days=i)).strftime("%b"),
-                months_ru[(today + timedelta(days=i)).strftime("%b")]
+                months_ru_abb[(today + timedelta(days=i)).strftime("%b")]
                 ),
             callback_data=date.strftime("date_%Y-%m-%d")
         )
