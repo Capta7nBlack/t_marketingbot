@@ -31,7 +31,7 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
     text_lines = text.split("_")  # Split text by "_" for new lines
 
     # Load font
-    font_path = os.path.join(os.path.dirname(__file__), "NotoSans-Regular.ttf")
+    font_path = os.path.join(os.path.dirname(__file__), "mazzard.ttf")
     font_size = int(50 * font_scale)  # Adjust font size based on scale
     font = ImageFont.truetype(font_path, font_size)
 
