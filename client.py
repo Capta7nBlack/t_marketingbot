@@ -20,11 +20,22 @@ from modules.get_absolute_path import absolute_path
 from modules.datepicker import create_calendar
 from modules.datepicker import months_ru
 
+from modules.text import text_buttons, text_message_basic, text_message_photo, text_message_post_text
+from modules.text import text_message_calendar, text_message_time_picker, text_message_payment
+from modules.text import text_message_showall, text_message_verification
 
 from imageloading.imagemaker import overlay_images
 
 from config import frame_absolute_path, output_absolute_folder, user_bot_token, under_post_text_switch 
-from config import input_absolute_folder, receipts_absolute_folder, admin_telegram
+from config import input_absolute_folder, receipts_absolute_folder, admin_telegram 
+
+
+
+
+
+
+
+
 
 
 
@@ -51,57 +62,53 @@ class PostStates(StatesGroup):
     payment = State()
 
 # Cancel conversation handler
-@dp.message(F.text == "❌ Остановить диалог")
+@dp.message(F.text == text_buttons.get("cancelation"))
 async def cancel_conversation(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("❌ Диалог прекращен. Вы можете начать заново", reply_markup=markup_default())
+    await message.answer(text_message_basic.get("cancelation"), reply_markup=markup_default())
 
 # Start command handler
 @dp.message(Command("start"))
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer(f"Здравствуйте {message.from_user.first_name}, добро пожаловать!", reply_markup=markup_default())
+    await message.answer(text_message_basic.get('start'),
+                         reply_markup=markup_default()
+                         )
 
 # Create post handler
-@dp.message(F.text == "Создать рекламный пост")
+@dp.message(F.text == text_buttons.get('default_create'))
 async def default_create(message: types.Message, state: FSMContext):
     await state.clear()
     await state.set_state(PostStates.uploading_photo)
-    await message.answer("Отправьте, пожалуйста, фото для поста.", reply_markup=markup_cancelation())
+    await message.answer(text_message_basic.get("default_create"), reply_markup=markup_cancelation())
 
 # Show all posts handler
-@dp.message(F.text == "Показать все созданные посты")
+@dp.message(F.text == text_buttons.get('default_showall'))
 async def default_showall(message: types.Message, state: FSMContext):
-
     await state.clear()
 
     data = db.show_all(message.chat.id)
     i = 1
     if data:
         for photo_path, post_text, post_date, post_time, kaspi_path in data:
-            print(post_date)
             date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
             formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
-            print("photo_path:",photo_path)    
-            print("kaspi_path:",kaspi_path)
-            if post_text: 
-                post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
-            else:
-                post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
-            distance = "\n---\n---\n---"
+            
+            # Use the refactored dictionary for showall_post
+            caption = text_message_showall["showall_post"](post_text, formatted_date, post_time)
+            distance = text_message_showall.get("showall_distance")
 
             output_photo = FSInputFile(photo_path)
             pdf_file = FSInputFile(kaspi_path)
-            await message.answer(f"Пост номер: {i}")
-            i = i + 1 # ЗНАЮ ЧТО ЭТО СМЕШНО, НО МНЕ НЕ НРАВИТЬСЯ enumerate
-            await message.answer_document(output_photo,caption = post_text)
+
+            await message.answer(text_message_showall["showall_post_number"](i))
+            i += 1  # Increment post number
+            await message.answer_photo(output_photo, caption=caption)
             await message.answer_document(pdf_file, caption=distance)
-        await message.answer(f"Если вы хотите отменить рекламный пост и сделать возврат средств, то обратитесь к менеджеру - {admin_telegram}")
 
+        await message.answer(text_message_showall["showall_manager"](admin_telegram))
     else:
-        await message.answer(f"Вы еще не создали ни одного поста для рекламы. Для этого чтобы это сделать нажмите кнопку 'Создать рекламный пост'", reply_markup = markup_default()
-                             )
-
+        await message.answer(text_message_showall.get("showall_empty"), reply_markup=markup_default())
 
 # Handle photo upload
 @dp.message(StateFilter(PostStates.uploading_photo), F.photo)
@@ -114,7 +121,7 @@ async def handle_photo(message: types.Message, state: FSMContext):
     with open(save_input_path, "wb") as new_file:
         new_file.write(downloaded_file)
 
-    await message.answer("Фото принято. Теперь отправьте текст для фото.")
+    await message.answer(text_message_photo.get("photo_uploaded"))
     await state.update_data(input_photo_path=absolute_path(save_input_path))
     await state.set_state(PostStates.photo_text)
 
@@ -132,7 +139,9 @@ async def handle_photo(message: types.Message, state: FSMContext):
     with open(save_input_path, "wb") as new_file:
         new_file.write(image_data.read())
 
-    await message.answer("Фото принято как файл. Теперь отправьте текст для фото.")
+    await message.answer(text_message_photo.get("photo_uploaded_as_file"),
+                         reply_markup=markup_cancelation()
+                         )
     await state.update_data(input_photo_path=absolute_path(save_input_path))
     await state.set_state(PostStates.photo_text)
 
@@ -140,16 +149,14 @@ async def handle_photo(message: types.Message, state: FSMContext):
 # Handle invalid photo input
 @dp.message(StateFilter(PostStates.uploading_photo))
 async def invalid_photo(message: types.Message):
-    await message.answer("❌ Отправьте фото, а не текст.", reply_markup=markup_cancelation())
-
+    await message.answer(text_message_photo.get("invalid_photo"), reply_markup=markup_cancelation())
+    
 
 # Handle photo text
 @dp.message(StateFilter(PostStates.photo_text), F.text)
 async def photo_text(message: types.Message, state: FSMContext):
     safe_text = hashed( message.text)
     safe_first_name = re.sub(r'[\/:*?"<>|]', '', message.from_user.first_name)
-    print(f"Safe text:{safe_text}")
-    print(f"message.text:{message.text}")
 
     data = await state.get_data()
     input_photo_path = data['input_photo_path']
@@ -161,24 +168,29 @@ async def photo_text(message: types.Message, state: FSMContext):
     output_photo = FSInputFile(output_path_file)
 
     await message.answer_photo(output_photo)
-    await message.answer("Хотите продолжить или попробовать еще раз?", reply_markup=inline_verification("photo_text"))
+    await message.answer(text_message_photo.get('edited_photo_verification'),
+                         reply_markup=inline_verification("photo_text")
+                         )
 
 
 @dp.message(StateFilter(PostStates.photo_text))
 async def invalid_text(message: types.Message, state: FSMContext):
-    await message.answer("Вы должны отправить Текст")
-
+    await message.answer(text_message_photo.get("invalid_text"))
+    
+    
 # Handle post text
 @dp.message(StateFilter(PostStates.post_text))
 async def post_text(message: types.Message, state: FSMContext):
     await state.update_data(post_text=message.text)
     
-    await message.answer(f'Текст для поста: "{message.text}"\nПродолжим или хотите поменять текст на другой?', reply_markup=inline_verification("post_text"))
+    await message.answer(text_message_post_text["post_text_received"](message.text),
+                         reply_markup=inline_verification("post_text")
+                         )
 
 
 @dp.message(F.document, F.document.mime_type == "application/pdf", StateFilter(PostStates.payment))
 async def payment_handle_pdf(message: types.Message, state: FSMContext):
-    await message.answer("✅ Ваш чек был принят. Если вы ошиблись, можете поменять файл перед тем как он будет сохранен и отправлен на обработку менеджера.",
+    await message.answer(text_message_payment.get("payment_handle_pdf"),
                          reply_markup = inline_verification("payment"))    
     await state.update_data(receipt_id = message.document.file_id)
     await state.update_data(username=message.from_user.first_name)
@@ -186,14 +198,14 @@ async def payment_handle_pdf(message: types.Message, state: FSMContext):
 
 @dp.message(F.photo, StateFilter(PostStates.payment))
 async def payment_invalid_photo(message: types.Message, state: FSMContext):
-    await message.answer("Пожалуйста отправьте чек в виду PDF файла. Фото чека не подойдет",
+    await message.answer(text_message_payment.get("payment_invalid_photo"),
                          reply_markup = markup_cancelation()
                          )
 
 
 @dp.message(StateFilter(PostStates.payment))
 async def payment_invalid_rest(message: types.Message, state: FSMContext):
-    await message.answer("Пожалуйста отправьте чек в виду PDF файла.", 
+    await message.answer(text_message_payment.get("payment_invalid_rest"), 
                          reply_markup = markup_cancelation()
                          )
 
@@ -209,20 +221,23 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
         if step == "photo_text":
             if under_post_text_switch:
                 await state.set_state(PostStates.post_text)
-                await call.message.answer("Отправьте текст для поста", reply_markup=markup_cancelation())
+                await call.message.answer(
+                        text_message_verification.get("confirm_photo_text__ask_post_text"),
+                        reply_markup=markup_cancelation()
+                                         )
             else:
                 await state.set_state(PostStates.selecting_date)
 
                 await call.message.edit_text(
-                        f"Выберите дату публикации.",
-                           reply_markup=create_calendar()
-                           )
+                    text_message_verification.get("confirm_photo_text_no_post_text__ask_date"),
+                    reply_markup=create_calendar()
+                                            )
                 await call.answer()
         elif step == "post_text":
             await state.set_state(PostStates.selecting_date)
 
             await call.message.edit_text(
-                        f"Выберите дату публикации.",
+                        text_message_verification.get("confirm_post_text__ask_date"),
                            reply_markup=create_calendar()
                            )
             await call.answer()
@@ -230,7 +245,10 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
 
         elif step == "selecting_date":
             await state.set_state(PostStates.selecting_time)
-            await call.message.edit_text("Теперь выберите время публикации.", reply_markup=build_hour_keyboard_clock())
+            await call.message.edit_text(
+                    text_message_verification.get("confirm_selecting_date__ask_time"),
+                    reply_markup=build_hour_keyboard_clock()
+                                         )
 
 
         elif step == "selecting_time":
@@ -246,27 +264,24 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
 
               
-            if post_text: 
-                post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
-            else:
-                post_text = f"Дата: {formatted_date}\nВремя: {post_time}"
+            caption = text_message_verification.get("confirm_selecting_time__show_post")(post_text, formatted_date, post_time)
 
             output_photo = FSInputFile(data['output_photo_path'])
 
-            await call.message.answer_photo(output_photo, caption=post_text)
+            await call.message.answer_photo(output_photo, caption=caption)
 
-            await call.message.answer("Продолжим или если что-то хотите поменять начните заново", reply_markup=inline_verification("final_verification"))
+            await call.message.answer(text_message_verification.get("confirm_selecting_time__final_verification"), reply_markup=inline_verification("final_verification"))
 
 
 
         elif step == "final_verification":
-            await call.message.answer("Оплатите 5 000тг через Kaspi номер: +7 705 406 60 26. После оплаты отправьте чек в виле PDF файла.", reply_markup = markup_cancelation()
+            await call.message.answer(text_message_verification.get("confirm_final_verification__ask_pdf"), reply_markup = markup_cancelation()
                                       )
             await state.set_state(PostStates.payment)
         
 
         elif step == "payment":
-            await call.message.answer("Поздравляю, вы зарегистрировали новый пост для рекламы. В скором времени менеджер обработает вашу заявку!.",
+            await call.message.answer(text_message_verification.get("confirm_payment__success"),
                                       reply_markup = markup_default())
                         
             data = await state.get_data()
@@ -302,13 +317,13 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
     elif call.data.startswith("retry_"):
         if step == "photo_text":
             await state.set_state(PostStates.uploading_photo)
-            await call.message.answer("Пожалуйста отправьте фото заново", reply_markup=markup_cancelation())
+            await call.message.answer(text_message_verification.get("retry_photo_text"), reply_markup=markup_cancelation())
 
 
         elif step == "post_text":
             await call.answer()
             await state.set_state(PostStates.post_text)
-            await call.message.answer("Пожалуйста отправьте новый текст", reply_markup=markup_cancelation())
+            await call.message.answer(text_message_verification.get("retry_post_text"), reply_markup=markup_cancelation())
 
 
         elif step == "selecting_date":
@@ -316,7 +331,7 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             await state.set_state(PostStates.selecting_date)
 
             await call.message.edit_text(
-                        f"Выберите дату публикации.",
+                        text_message_verification.get("retry_selecting_date"),
                            reply_markup=create_calendar()
                            )
             await call.answer()
@@ -325,16 +340,16 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
 
         elif step == "selecting_time":
             await state.set_state(PostStates.selecting_time)
-            await call.message.edit_text("Выберите новое время публикации.", reply_markup=build_hour_keyboard_clock())
+            await call.message.edit_text(text_message_verification.get("retry_selecting_time"), reply_markup=build_hour_keyboard_clock())
 
 
         elif step == "final_verification":
             await state.set_state(PostStates.uploading_photo)
-            await call.message.answer("Отправьте, пожалуйста, новое фото для поста.", reply_markup=markup_cancelation())
+            await call.message.answer(text_message_verification.get("retry_final_verification"), reply_markup=markup_cancelation())
         
         elif step == "payment":
             await state.set_state(PostStates.payment)
-            await call.message.answer("Отправьте пожалуйста новый чек.")
+            await call.message.answer(text_message_verification.get("retry_payment"))
 
 
     await call.answer()
@@ -348,13 +363,13 @@ async def selecting_date(callback: types.CallbackQuery, state: FSMContext):
     formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
 
     await state.update_data(post_date=selected_date)
-    print("In callback of calendar")
-    print(selected_date)
+    
+    
     data = await state.get_data()
-    print(data.get('post_date'))
+    
 
     await callback.message.edit_text(
-            f'Вы выбрали {formatted_date}.\nВы можете поменять дату если ошиблись.',
+            text_message_calendar.get("calendar_date_selected")(formatted_date),
             reply_markup = inline_verification("selecting_date")
         )
     await callback.answer()     
@@ -369,7 +384,7 @@ async def callback_inline(call: types.CallbackQuery, state: FSMContext):
         chosen_hour = data.split("_")[1]
         await state.update_data(post_time = chosen_hour)
         # ✅ Edit message text to show the selected hour
-        await call.message.edit_text(f"Выбранное время: {chosen_hour}. Если вы можете поменять время если ошиблись.",
+        await call.message.edit_text(text_message_time_picker.get("time_picker_time_selected")(chosen_hour),
                                      reply_markup = inline_verification("selecting_time")
                                      )
 

@@ -12,3 +12,5 @@ db_path = "D:/Projects/taddbot/modules/database.db"
 admin_telegram = "" # Manager telegram for users to contact. Should be like @username
 allowed_users = [''] #list of usernames that can access manager_bot
 
+price = "5000тг" # Price that will be shown to the user
+kaspi_number = "+7 777 777 77 77" # The kaspi number to which user will transfer money
