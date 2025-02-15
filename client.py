@@ -287,13 +287,14 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             data = await state.get_data()
             user_id = call.message.chat.id
             username = call.message.from_user.username
+            input_photo_path = data.get('input_photo_path')
             photo_path = data.get('output_photo_path')
             post_text = data.get('post_text', None)
             post_date = data.get('post_date')
             print(post_date)
             post_time = data.get('post_time')
             kaspi_path = save_path
-            db.new_write(user_id, username, photo_path, post_text, post_date, post_time, kaspi_path)
+            db.new_write(user_id, username,input_photo_path, photo_path, post_text, post_date, post_time, kaspi_path)
 
 
             await state.clear()

@@ -29,6 +29,7 @@ def create():
     curr.execute('CREATE TABLE IF NOT EXISTS adds('
              'id INTEGER PRIMARY KEY,'
              'user_id INTEGER,'
+             'input_photo_path TEXT,'
              'photo_path TEXT,'
              'post_text TEXT,'
              'post_date TEXT,'
@@ -40,17 +41,17 @@ def create():
     close(conn,curr)
 
 
-def new_write(user_id, username, photo_path, post_text, post_date, post_time, kaspi_path ):
+def new_write(user_id, username,input_photo_path, photo_path, post_text, post_date, post_time, kaspi_path ):
     conn, curr = open()
-    curr.execute('INSERT INTO adds (user_id, username, photo_path, post_text, post_date, post_time, kaspi_path ) VALUES (?,?,?,?,?,?,?)', (user_id, username, photo_path, post_text, post_date, post_time, kaspi_path))
+    curr.execute('INSERT INTO adds (user_id, username,input_photo_path, photo_path, post_text, post_date, post_time, kaspi_path ) VALUES (?,?,?,?,?,?,?,?)',
+                 (user_id, username, input_photo_path, photo_path, post_text, post_date, post_time, kaspi_path))
     close(conn,curr)
 
 
 def show_all(user_id, min_date=None, max_date=None):
     conn, curr = open()
-    query = 'SELECT photo_path, post_text, post_date, post_time, kaspi_path FROM adds WHERE user_id = ? AND hidden = ?;'
-    hidden = 0
-    curr.execute(query,(user_id, hidden))
+    query = 'SELECT photo_path, post_text, post_date, post_time, kaspi_path FROM adds WHERE user_id = ?;'
+    curr.execute(query,(user_id,))
     data = curr.fetchall()
     return data
 
@@ -62,7 +63,6 @@ def show_between(min_date, max_date):
     FROM adds 
     WHERE post_date BETWEEN ? AND ?;
             '''    
-    hidden = 0
     curr.execute(query,(min_date, max_date))
     data = curr.fetchall()
     return data
@@ -77,7 +77,7 @@ def fetch_and_clean_old_records():
 
     # Fetch specified columns from rows older than half a year
     cursor.execute(f"""
-        SELECT photo_path, kaspi_path 
+        SELECT input_photo_path, photo_path, kaspi_path 
         FROM adds 
         WHERE post_date < ?
     """, (half_year_ago,))
@@ -99,7 +99,7 @@ def fetch_and_clean_old_records():
     
     # Commit changes and close connection
     close(conn, cursor)
-    print(f"Deleted records in db older than {half_year_ago}.")
+    print(f"Deleted records in db older than {half_year_ago} if they were present.")
     return old_records
 
 
@@ -107,7 +107,17 @@ def delete_actual_files(old_records):
     """Delete files from photo_path and kaspi_path in old_records."""
 
     for record in old_records:
-        photo_path, kaspi_path = record
+        input_photo_path, photo_path, kaspi_path = record
+
+        # Delete input_photo_path file if it exists
+        if input_photo_path and os.path.exists(input_photo_path):
+            try:
+                os.remove(input_photo_path)
+                print(f"Deleted: {input_photo_path}")
+            except Exception as e:
+                print(f"Error deleting {input_photo_path}: {e}")
+        else:
+            print(f"File not found: {input_photo_path}. Probably because input photos are constantly rewritten on top of each other. One user - one input photo saved in local, but in db each saved as a separate column.")
         
         # Delete photo_path file if it exists
         if photo_path and os.path.exists(photo_path):
@@ -134,7 +144,6 @@ def delete_actual_files(old_records):
 
 
 
-# Example Usage
 
 
 
