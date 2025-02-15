@@ -33,7 +33,7 @@ def create_calendar():
 
     builder = InlineKeyboardBuilder()
 
-    today = datetime.today() + timedelta(days=5)
+    today = datetime.today()
     for i in range(calendar_days):
         date = today + timedelta(days=i)
         builder.button(

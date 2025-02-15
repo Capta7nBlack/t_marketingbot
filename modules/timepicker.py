@@ -5,36 +5,30 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from aiogram import F
 from aiogram.filters import StateFilter
 
+import datetime
+
 
 # ✅ Function to Build Hour Keyboard in a Clock Layout
 def build_hour_keyboard_clock() -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup(inline_keyboard=[])
 
-    # This 2D list represents the 'shape' of the clock
-    
-    clock_layout = [
-        [9,  12, 15],
-        [17, 18, 19],
-        [20, 21, 22]
-    ]
+    # Get the current hour
+    add_hours = 1 # because if it is 15:24, it should start from 16:00. Not from 15:00
+    current_hour = (datetime.datetime.now() + datetime.timedelta(hours=add_hours)).hour
 
+    # Clock layout from 9:00 to 23:00
+    clock_layout = list(range(9, 24))
 
-    for row in clock_layout:
-        buttons = []
-        for cell in row:
-            if cell == 0:
-                # Blank button to maintain layout (callback_data="none" to avoid errors)
-                buttons.append(InlineKeyboardButton(text = " ", callback_data="none"))
-            else:
-                # Hour button with formatted text
-                hour_text = f"{cell}:00"
-                buttons.append(InlineKeyboardButton(text = hour_text, callback_data=f"hour_{hour_text}"))
-        
-        # Add row to inline keyboard
-        markup.inline_keyboard.append(buttons)
+    for hour in clock_layout:
+        if hour >= current_hour:
+            hour_text = f"{hour}:00"
+            button = InlineKeyboardButton(
+                text=hour_text,
+                callback_data=f"hour_{hour_text}"
+            )
+            markup.inline_keyboard.append([button])
 
     return markup
-
 
 # ✅ Handling the Button Clicks in aiogram v3
 # @dp.callback_query(F.data.startswith("hour_") | (F.data == "none"))
