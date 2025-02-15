@@ -14,7 +14,8 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
         print("frame image didn't load")
 
     w, h = foreground.size
-
+    print("inthe start")
+    print(h)
     # Resize and crop background to match foreground dimensions
     background = resize_and_crop(background, w, h)
 
@@ -37,13 +38,14 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
     # Define text properties
     font_color = (255, 255, 255)  # White text
     margin = 100  # Margin from top
+    line_height = font_size + 10  # Add spacing between lines
 
     # Calculate text height to position correctly
     draw = ImageDraw.Draw(background)
-    line_height = font_size + 10  # Add spacing between lines
+
+    wrapped_lines = []
 
     # Position text from the top downwards
-    y_position = 725  # Start from the top
     for line in text_lines:  # Draw from top to bottom
         # Measure text width and height
         text_width = draw.textlength(line, font=font)
@@ -52,7 +54,6 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
 
         if text_width > w - 2 * margin:
             words = line.split(" ")
-            wrapped_lines = []
             temp_line = ""
 
             for word in words:
@@ -66,18 +67,20 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
             if temp_line:
                 wrapped_lines.append(temp_line.strip())
 
-            for wrapped_line in wrapped_lines:
-                temp_width = draw.textlength(wrapped_line, font=font)
-                x_position = (w - temp_width) // 2  # Center align text
-                y_position += line_height
-                draw.text((x_position, y_position), wrapped_line, font=font, fill=font_color)
-                  # Move to the next line
-        
         else:
-            x_position = (w - text_width) // 2  # Center align text
-            y_position += line_height
-            draw.text((x_position, y_position), line, font=font, fill=font_color)
-              # Move to the next line
+            wrapped_lines.append(line)
 
+    total_text_height = len(wrapped_lines) * line_height
+    desired_center_y = 900
+    y_position = desired_center_y - (total_text_height // 2)  
+
+    for wrapped_line in wrapped_lines:
+        temp_width = draw.textlength(wrapped_line, font=font)
+        x_position = (w - temp_width) // 2  # Center align text
+        y_position += line_height
+        draw.text((x_position, y_position), wrapped_line, font=font, fill=font_color)
+              # Move to the next line
+        
+        
     # Save the output image
     background.save(output_path)
