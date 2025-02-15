@@ -1,5 +1,7 @@
 import sqlite3
 
+import datetime
+
 import sys
 import os
 
@@ -31,8 +33,6 @@ def create():
              'post_text TEXT,'
              'post_date TEXT,'
              'post_time TEXT,'
-             'cancelled INTEGER DEFAULT 0,'
-             'hidden INTEGER DEFAULT 0, '
              'kaspi_path TEXT,'
              'username TEXT'
              ')'
@@ -68,7 +68,73 @@ def show_between(min_date, max_date):
     return data
 
 
+def fetch_and_clean_old_records():
+    # Calculate the date threshold (half a year ago)
+    half_year_ago = (datetime.datetime.now() - datetime.timedelta(days=182)).strftime("%Y-%m-%d")
 
+    # Connect to SQLite database
+    conn, cursor = open()
+
+    # Fetch specified columns from rows older than half a year
+    cursor.execute(f"""
+        SELECT photo_path, kaspi_path 
+        FROM adds 
+        WHERE post_date < ?
+    """, (half_year_ago,))
+    
+    old_records = cursor.fetchall()
+
+    if old_records:
+        print(f"Records older than {half_year_ago}:")
+        for record in old_records:
+            print(record)
+    else:
+        print("No records older than half a year")
+        
+    # Delete rows older than half a year
+    cursor.execute(f"""
+        DELETE FROM adds
+        WHERE post_date < ?
+    """, (half_year_ago,))
+    
+    # Commit changes and close connection
+    close(conn, cursor)
+    print(f"Deleted records in db older than {half_year_ago}.")
+    return old_records
+
+
+def delete_actual_files(old_records):
+    """Delete files from photo_path and kaspi_path in old_records."""
+
+    for record in old_records:
+        photo_path, kaspi_path = record
+        
+        # Delete photo_path file if it exists
+        if photo_path and os.path.exists(photo_path):
+            try:
+                os.remove(photo_path)
+                print(f"Deleted: {photo_path}")
+            except Exception as e:
+                print(f"Error deleting {photo_path}: {e}")
+        else:
+            print(f"File not found: {photo_path}")
+        
+        # Delete kaspi_path file if it exists
+        if kaspi_path and os.path.exists(kaspi_path):
+            try:
+                os.remove(kaspi_path)
+                print(f"Deleted: {kaspi_path}")
+            except Exception as e:
+                print(f"Error deleting {kaspi_path}: {e}")
+        else:
+            print(f"File not found: {kaspi_path}")
+
+    if not old_records:
+        print("No records from db to delete actual files")
+
+
+
+# Example Usage
 
 
 

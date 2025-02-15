@@ -35,6 +35,7 @@ dp = Dispatcher(storage=storage)
 
 try:
    db.create()
+   db.delete_actual_files(db.fetch_and_clean_old_records())
 except Exception as e:
     print("Случился казус:", e)
 
@@ -81,7 +82,8 @@ async def default_showall(message: types.Message, state: FSMContext):
             print(post_date)
             date_obj = datetime.strptime(post_date, "%Y-%m-%d")           
             formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
-                
+            print("photo_path:",photo_path)    
+            print("kaspi_path:",kaspi_path)
             if post_text: 
                 post_text = f"Текст под постом: '{post_text}'\nДата: {formatted_date}\nВремя: {post_time}"
             else:
@@ -271,9 +273,12 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
             receipt_id = data.get("receipt_id")
             file_info = await bot.get_file(receipt_id)
             file_path = file_info.file_path
-
             pdf_data = await bot.download_file(file_path)
-            save_path = f"{receipts_absolute_folder}{data.get('username')}_{receipt_id}.pdf"
+
+            to_hash = str(receipt_id) + str(call.message.message_id)
+            save_random = hashed(to_hash)
+            save_path = f"{receipts_absolute_folder}{data.get('username')}_{save_random}.pdf"
+
             with open(save_path, 'wb') as f:
                 f.write(pdf_data.read())
 
