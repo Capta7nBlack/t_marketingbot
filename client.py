@@ -24,7 +24,7 @@ from modules.text import text_buttons, text_message_basic, text_message_photo, t
 from modules.text import text_message_calendar, text_message_time_picker, text_message_payment
 from modules.text import text_message_showall, text_message_verification
 
-from imageloading.imagemaker import overlay_images
+from imageloading.imageprocesser import overlay_images
 
 from config import frame_absolute_path, output_absolute_folder, user_bot_token, under_post_text_switch 
 from config import input_absolute_folder, receipts_absolute_folder, admin_telegram 
