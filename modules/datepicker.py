@@ -34,8 +34,12 @@ def create_calendar():
     builder = InlineKeyboardBuilder()
 
     today = datetime.today()
+    current_time = datetime.now().hour  
+
     for i in range(calendar_days):
         date = today + timedelta(days=i)
+        if current_time > 21 and i == 0: # handling the case when there is no time for today's date
+            continue
         builder.button(
             text=(today + timedelta(days=i)).strftime("%d %b").replace(
                 (today + timedelta(days=i)).strftime("%b"),
@@ -44,7 +48,19 @@ def create_calendar():
             callback_data=date.strftime("date_%Y-%m-%d")
         )
 
-    builder.adjust(items_per_column)  # Group buttons in rows of 4
+        # handling the case when there is no time for today's date
+    if current_time > 21:
+        date = today + timedelta(days=calendar_days)
+
+        builder.button(
+            text=(today + timedelta(days=calendar_days)).strftime("%d %b").replace(
+                (today + timedelta(days=calendar_days)).strftime("%b"),
+                months_ru_abb[(today + timedelta(days=calendar_days)).strftime("%b")]
+                ),
+            callback_data=date.strftime("date_%Y-%m-%d")
+        )
+
+    builder.adjust(items_per_column)
     return builder.as_markup()
 
 @dp.message(F.text.lower() == "pick date")

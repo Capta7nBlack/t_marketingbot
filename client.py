@@ -266,7 +266,7 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
               
             caption = text_message_verification.get("confirm_selecting_time__show_post")(post_text, formatted_date, post_time)
 
-            output_photo = FSInputFile(data['output_photo_path'])
+            output_photo = FSInputFile(data.get('output_photo_path'))
 
             await call.message.answer_photo(output_photo, caption=caption)
 
@@ -358,8 +358,10 @@ async def handle_verification(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("date_"), StateFilter(PostStates.selecting_date))
 async def selecting_date(callback: types.CallbackQuery, state: FSMContext):
     selected_date = callback.data.replace("date_", "")
-    
+
     date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
+
+
     formatted_date = f"{date_obj.year}, {date_obj.day} {months_ru[date_obj.month]}"
 
     await state.update_data(post_date=selected_date)

@@ -6,7 +6,7 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from config import db_path
+from config import db_path, cleaner_days
 
 
 def open():
@@ -70,7 +70,7 @@ def show_between(min_date, max_date):
 
 def fetch_and_clean_old_records():
     # Calculate the date threshold (half a year ago)
-    half_year_ago = (datetime.datetime.now() - datetime.timedelta(days=182)).strftime("%Y-%m-%d")
+    older_than = (datetime.datetime.now() - datetime.timedelta(days=cleaner_days)).strftime("%Y-%m-%d")
 
     # Connect to SQLite database
     conn, cursor = open()
@@ -80,26 +80,26 @@ def fetch_and_clean_old_records():
         SELECT input_photo_path, photo_path, kaspi_path 
         FROM adds 
         WHERE post_date < ?
-    """, (half_year_ago,))
+    """, (older_than,))
     
     old_records = cursor.fetchall()
 
     if old_records:
-        print(f"Records older than {half_year_ago}:")
+        print(f"Records older than {older_than}:")
         for record in old_records:
             print(record)
     else:
-        print("No records older than half a year")
+        print(f"No records older than {older_than}")
         
     # Delete rows older than half a year
     cursor.execute(f"""
         DELETE FROM adds
         WHERE post_date < ?
-    """, (half_year_ago,))
+    """, (older_than,))
     
     # Commit changes and close connection
     close(conn, cursor)
-    print(f"Deleted records in db older than {half_year_ago} if they were present.")
+    print(f"Deleted records in db older than {older_than} if they were present.")
     return old_records
 
 

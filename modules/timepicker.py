@@ -15,9 +15,8 @@ def build_hour_keyboard_clock() -> InlineKeyboardMarkup:
     # Get the current hour
     add_hours = 1 # because if it is 15:24, it should start from 16:00. Not from 15:00
     current_hour = (datetime.datetime.now() + datetime.timedelta(hours=add_hours)).hour
-
     # Clock layout from 9:00 to 23:00
-    clock_layout = list(range(9, 24))
+    clock_layout = list(range(9, 23))
 
     for hour in clock_layout:
         if hour >= current_hour:
