@@ -3,7 +3,7 @@ import numpy as np
 from imageloading.resize_and_crop import resize_and_crop
 import os
 
-def overlay_images(background_path, foreground_path, output_path, text, font_scale=1.75, thickness=2):
+def overlay_images(background_path, foreground_path, output_path, text, font_name = "bebas.ttf", font_scale=1.75, thickness=2):
     # Load images
     background = Image.open(background_path).convert("RGBA")
     foreground = Image.open(foreground_path).convert("RGBA")  # Keep alpha
@@ -28,10 +28,11 @@ def overlay_images(background_path, foreground_path, output_path, text, font_sca
         background = blended.convert("RGB")  # Convert back to RGB for text rendering
 
     # Prepare text
+    text = text.upper()
     text_lines = text.split("_")  # Split text by "_" for new lines
 
     # Load font
-    font_path = os.path.join(os.path.dirname(__file__), "mazzard.ttf")
+    font_path = os.path.join(os.path.dirname(__file__), font_name)
     font_size = int(50 * font_scale)  # Adjust font size based on scale
     font = ImageFont.truetype(font_path, font_size)
 
